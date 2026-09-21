@@ -401,6 +401,23 @@
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     clone.setAttribute('width', '1470');
     clone.setAttribute('height', '360');
+
+    const bg = clone.querySelector('.board-bg');
+    const edge = clone.querySelector('.board-edge');
+    const text = clone.querySelector('#previewText');
+    if (bg) bg.setAttribute('fill', '#101216');
+    if (edge) {
+      edge.setAttribute('fill', 'none');
+      edge.setAttribute('stroke', 'rgba(225,235,255,.28)');
+      edge.setAttribute('stroke-width', '1.2');
+    }
+    if (text) {
+      text.setAttribute('font-family', selectedFont().family);
+      text.setAttribute('font-weight', String(selectedFont().weight));
+      text.setAttribute('font-size', String(state.fontSize));
+      text.setAttribute('filter', 'url(#glow)');
+      text.setAttribute('paint-order', 'stroke fill');
+    }
     return new XMLSerializer().serializeToString(clone);
   }
 
