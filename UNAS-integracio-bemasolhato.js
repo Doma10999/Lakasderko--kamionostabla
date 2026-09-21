@@ -18,7 +18,7 @@
    */
 
   var CFG = {
-    version: '20260921-kamion-v8-es5',
+    version: '20260921-kamion-v8-designid-fix',
     productPath: '/Tervezd-meg-sajatodat',
     designerUrl: 'https://lakasderko--kamionostabla.lakasdekor.workers.dev/',
     returnUrl: 'https://falmatrica-lakasdekor.hu/Tervezd-meg-sajatodat',
@@ -373,13 +373,61 @@
       'input[data-param-id="' + id + '"]',
       'textarea[data-param-id="' + id + '"]'
     ];
-    var i, el;
+    var i, el, inputs, direct, surrounding, p;
 
+    /* 1) Elsőként próbáljuk a korábbi, ismert UNAS paraméterazonosítót. */
     for (i = 0; i < selectors.length; i++) {
       try {
         el = document.querySelector(selectors[i]);
         if (el) return el;
       } catch (e) {}
+    }
+
+    /*
+     * 2) Ha az UNAS más HTML nevet / ID-t adott a mezőnek,
+     *    akkor a látható "Tervazonosító" felirat alapján keressük meg.
+     *    Ez ugyanaz az elv, amit a működő házszámtábla integráció használ.
+     */
+    inputs = document.querySelectorAll(
+      'input[type="text"],input:not([type]),textarea'
+    );
+
+    for (i = 0; i < inputs.length; i++) {
+      el = inputs[i];
+
+      direct = [
+        el.name || '',
+        el.id || '',
+        el.placeholder || '',
+        el.getAttribute('aria-label') || ''
+      ].join(' ');
+
+      surrounding = '';
+
+      try {
+        if (el.labels && el.labels.length) {
+          var li;
+          for (li = 0; li < el.labels.length; li++) {
+            surrounding += ' ' + (el.labels[li].textContent || '');
+          }
+        }
+      } catch (e2) {}
+
+      p = el.parentElement;
+      var depth = 0;
+      while (p && depth < 4) {
+        surrounding += ' ' + (p.textContent || '');
+        p = p.parentElement;
+        depth++;
+      }
+
+      if (
+        /tervazonosító|tervazonosito|terv azonosító|terv azonosito/i.test(
+          direct + ' ' + surrounding
+        )
+      ) {
+        return el;
+      }
     }
 
     return null;
