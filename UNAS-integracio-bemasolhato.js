@@ -171,6 +171,50 @@
     return true;
   }
 
+  function visuallyHideChoiceRow(select, captionWords) {
+    if (!select) return;
+
+    const words = (captionWords || []).map(norm);
+    let target = select;
+
+    // Walk upward to the smallest wrapper that contains this select and its caption,
+    // but avoid hiding a large product-info container.
+    let p = select.parentElement;
+    for (let i = 0; i < 4 && p; i++, p = p.parentElement) {
+      const t = norm(txt(p));
+      const selectCount = p.querySelectorAll ? p.querySelectorAll('select').length : 0;
+      const hit = words.some(w => t.includes(w));
+      if (hit && selectCount <= 1 && t.length < 220) {
+        target = p;
+        break;
+      }
+    }
+
+    target.style.setProperty('display','none','important');
+    target.style.setProperty('visibility','hidden','important');
+    target.style.setProperty('height','0','important');
+    target.style.setProperty('min-height','0','important');
+    target.style.setProperty('margin','0','important');
+    target.style.setProperty('padding','0','important');
+    target.style.setProperty('overflow','hidden','important');
+
+    // Hide a separate caption too, if UNAS renders it outside the select wrapper.
+    [...document.querySelectorAll('label,div,span,p,strong,b')].forEach(node => {
+      const own = norm(txt(node).replace(/\s*[:：]\s*$/, ''));
+      if (!own || own.length > 70) return;
+      if (words.some(w => own === w || own.startsWith(w + ' '))) {
+        if (!node.contains(select) && !select.contains(node)) {
+          node.style.setProperty('display','none','important');
+        }
+      }
+    });
+  }
+
+  function hideNativeDesignerChoices() {
+    visuallyHideChoiceRow(findLedSelect(), ['LED színe', 'LED szin']);
+    visuallyHideChoiceRow(findEngravingSelect(), ['Gravírozás', 'Gravirozas']);
+  }
+
   const DESIGN_RX = /terv\s*azonos[ií]t[oó]|tervazonos[ií]t[oó]/i;
 
   function fieldContext(el) {
@@ -349,6 +393,7 @@
 
     setSelectByText(ledSelect, ledLabel);
     setSelectByText(engravingSelect, gravLabel);
+    hideNativeDesignerChoices();
     writeDesignId();
     summaryBox();
 
@@ -358,6 +403,7 @@
 
   function install() {
     ensureDesignerButton();
+    hideNativeDesignerChoices();
     if (state.id) applyReturnedDesign();
     else summaryBox();
   }
@@ -368,6 +414,7 @@
   const observer = new MutationObserver(() => {
     if (++runs > 80) return;
     ensureDesignerButton();
+    hideNativeDesignerChoices();
     if (state.id) {
       writeDesignId();
       summaryBox();
