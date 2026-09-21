@@ -72,6 +72,8 @@
   };
 
   let sendInProgress = false;
+  let directEditInteraction = null;
+  let previewSelectionVisible = true;
 
   const state = {
     text: cleanText(params.get('nev')) || 'PETI',
@@ -382,6 +384,248 @@
     }
 
     queueSnapshotSave();
+    updateDirectEditOverlay();
+  }
+
+
+  function svgClientPoint(evt) {
+    const svg = els.designSvg;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return null;
+
+    const point = svg.createSVGPoint();
+    point.x = evt.clientX;
+    point.y = evt.clientY;
+
+    return point.matrixTransform(matrix.inverse());
+  }
+
+  function removeDirectEditOverlay() {
+    els.designSvg.querySelector('.truck-selection-ui')?.remove();
+  }
+
+  function updateDirectEditOverlay() {
+    removeDirectEditOverlay();
+
+    if (!previewSelectionVisible || !cleanText(state.text)) return;
+
+    let box;
+    try {
+      box = els.previewText.getBBox();
+    } catch (_) {
+      return;
+    }
+
+    if (!box || !Number.isFinite(box.width) || !Number.isFinite(box.height)) return;
+
+    const NS = 'http://www.w3.org/2000/svg';
+    const group = document.createElementNS(NS, 'g');
+    group.setAttribute('class', 'truck-selection-ui');
+
+    const pad = 5;
+    const x = box.x - pad;
+    const y = box.y - pad;
+    const w = box.width + pad * 2;
+    const h = box.height + pad * 2;
+
+    const rect = document.createElementNS(NS, 'rect');
+    rect.setAttribute('class', 'truck-selection-box');
+    rect.setAttribute('x', x.toFixed(2));
+    rect.setAttribute('y', y.toFixed(2));
+    rect.setAttribute('width', w.toFixed(2));
+    rect.setAttribute('height', h.toFixed(2));
+    rect.setAttribute('rx', '2');
+    group.appendChild(rect);
+
+    [
+      [x, y],
+      [x + w, y],
+      [x, y + h],
+      [x + w, y + h]
+    ].forEach(function (coords) {
+      const handle = document.createElementNS(NS, 'circle');
+      handle.setAttribute('class', 'truck-resize-handle');
+      handle.setAttribute('cx', coords[0].toFixed(2));
+      handle.setAttribute('cy', coords[1].toFixed(2));
+      handle.setAttribute('r', '4.3');
+
+      handle.addEventListener('pointerdown', function (evt) {
+        evt.preventDefault();
+        evt.stopPropagation();
+
+        const p = svgClientPoint(evt);
+        if (!p) return;
+
+        const center = targetCenter();
+        const startDistance = Math.max(
+          1,
+          Math.hypot(
+            p.x - center.x,
+            p.y - center.y
+          )
+        );
+
+        directEditInteraction = {
+          mode: 'resize',
+          pointerId: evt.pointerId,
+          startFontSize: state.fontSize,
+          startDistance: startDistance
+        };
+
+        try {
+          els.designSvg.setPointerCapture(evt.pointerId);
+        } catch (_) {}
+      });
+
+      group.appendChild(handle);
+    });
+
+    els.designSvg.appendChild(group);
+  }
+
+  function startDirectTextDrag(evt) {
+    evt.preventDefault();
+    evt.stopPropagation();
+
+    previewSelectionVisible = true;
+
+    const p = svgClientPoint(evt);
+    if (!p) return;
+
+    directEditInteraction = {
+      mode: 'move',
+      pointerId: evt.pointerId,
+      startPoint: p,
+      startXPct: state.xPct,
+      startYPct: state.yPct
+    };
+
+    els.previewText.classList.add('dragging');
+
+    try {
+      els.designSvg.setPointerCapture(evt.pointerId);
+    } catch (_) {}
+
+    updateDirectEditOverlay();
+  }
+
+  function moveDirectEdit(evt) {
+    if (
+      !directEditInteraction ||
+      directEditInteraction.pointerId !== evt.pointerId
+    ) {
+      return;
+    }
+
+    evt.preventDefault();
+
+    const p = svgClientPoint(evt);
+    if (!p) return;
+
+    if (directEditInteraction.mode === 'move') {
+      const dx = p.x - directEditInteraction.startPoint.x;
+      const dy = p.y - directEditInteraction.startPoint.y;
+
+      state.xPct = clamp(
+        directEditInteraction.startXPct +
+          dx / SAFE.width * 100,
+        0,
+        100
+      );
+
+      state.yPct = clamp(
+        directEditInteraction.startYPct +
+          dy / SAFE.height * 100,
+        0,
+        100
+      );
+
+      render();
+      return;
+    }
+
+    if (directEditInteraction.mode === 'resize') {
+      const center = targetCenter();
+      const distance = Math.max(
+        1,
+        Math.hypot(
+          p.x - center.x,
+          p.y - center.y
+        )
+      );
+
+      const ratio =
+        distance /
+        directEditInteraction.startDistance;
+
+      state.fontSize = clamp(
+        directEditInteraction.startFontSize * ratio,
+        34,
+        92
+      );
+
+      render();
+    }
+  }
+
+  function endDirectEdit(evt) {
+    if (!directEditInteraction) return;
+
+    try {
+      els.designSvg.releasePointerCapture(evt.pointerId);
+    } catch (_) {}
+
+    directEditInteraction = null;
+    els.previewText.classList.remove('dragging');
+
+    keepInsideSafeZone();
+    queueSnapshotSave();
+  }
+
+  function setupDirectEditing() {
+    els.previewText.style.pointerEvents = 'auto';
+
+    els.previewText.addEventListener(
+      'pointerdown',
+      startDirectTextDrag
+    );
+
+    els.designSvg.addEventListener(
+      'pointermove',
+      moveDirectEdit
+    );
+
+    els.designSvg.addEventListener(
+      'pointerup',
+      endDirectEdit
+    );
+
+    els.designSvg.addEventListener(
+      'pointercancel',
+      endDirectEdit
+    );
+
+    els.designSvg.addEventListener(
+      'pointerdown',
+      function (evt) {
+        if (
+          evt.target === els.designSvg ||
+          evt.target.classList.contains('board-bg') ||
+          evt.target.classList.contains('board-edge')
+        ) {
+          previewSelectionVisible = false;
+          updateDirectEditOverlay();
+        }
+      }
+    );
+
+    els.previewText.addEventListener(
+      'click',
+      function () {
+        previewSelectionVisible = true;
+        updateDirectEditOverlay();
+      }
+    );
   }
 
   function bbox() {
@@ -503,6 +747,7 @@
   function previewSvgString() {
     const clone = els.designSvg.cloneNode(true);
     clone.querySelector('#safeZone')?.remove();
+    clone.querySelector('.truck-selection-ui')?.remove();
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     clone.setAttribute('width', '1470');
     clone.setAttribute('height', '360');
@@ -719,6 +964,7 @@
 
   initializeEditSession();
   setupControls();
+  setupDirectEditing();
   render();
 
   if (missingEditDesign) {
