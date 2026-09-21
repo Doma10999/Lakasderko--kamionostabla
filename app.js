@@ -169,7 +169,7 @@
     patterns: [],
     led: LED_COLORS.some(c => c.id === params.get('led')) ? params.get('led') : 'blue',
     fontSize: clamp(Number(params.get('meret') || 68), 18, 280),
-    textScaleX: clamp(Number(params.get('szelesseg') || 100), 25, 600) / 100,
+    textScaleX: clamp(Number(params.get('szelesseg') || 100), 25, 800) / 100,
     xPct: clamp(Number(params.get('x') || 50), 0, 100),
     yPct: clamp(Number(params.get('y') || 50), 0, 100),
     showSafe: true,
@@ -299,7 +299,7 @@
     state.engraving = snap.engraving === 'fill' ? 'fill' : 'outline';
     state.led = LED_COLORS.some(c => c.id === snap.led) ? snap.led : 'blue';
     state.fontSize = clamp(snap.fontSize, 18, 280);
-    state.textScaleX = clamp(Number(snap.textScaleX || 1), .25, 6);
+    state.textScaleX = clamp(Number(snap.textScaleX || 1), .25, 8);
     state.xPct = clamp(snap.xPct, 0, 100);
     state.yPct = clamp(snap.yPct, 0, 100);
     state.showSafe = snap.showSafe !== false;
@@ -1116,14 +1116,16 @@
             mode:'pattern-stretch',
             pointerId:evt.pointerId,
             patternId:inst.id,
-            anchorX:selection.x,
+            startLeft:selection.x,
+            startRight:selection.x + selection.width,
             startW:Math.max(1, selection.width)
           };
         } else {
           directEditInteraction = {
             mode:'text-stretch',
             pointerId:evt.pointerId,
-            anchorX:selection.x,
+            startLeft:selection.x,
+            startRight:selection.x + selection.width,
             startScaleX:state.textScaleX,
             startW:Math.max(1, selection.width)
           };
@@ -1376,22 +1378,50 @@
     if (directEditInteraction.mode === 'text-stretch') {
       const i = directEditInteraction;
 
+      const safeLeft = SAFE.x;
       const safeRight = SAFE.x + SAFE.width;
-      const right = clamp(
-        p.x,
-        i.anchorX + 8,
-        safeRight
-      );
 
-      const desiredW = Math.max(8, right - i.anchorX);
+      /*
+        A jobb oldali ↔ fogóval most nem csak jobbra nő a felirat.
+        A húzás mértékével a bal oldala is balra terjeszkedik.
+        Így a PETI a teljes fehér Biztonsági zóna szélességét
+        kihasználhatja akkor is, ha eredetileg középen/jobbra áll.
+      */
+      const dx = p.x - i.startRight;
+
+      let desiredLeft = i.startLeft - dx;
+      let desiredRight = i.startRight + dx;
+
+      if (dx < 0) {
+        /* keskenyítésnél is szimmetrikusan közelítjük a két oldalt */
+        desiredLeft = i.startLeft - dx;
+        desiredRight = i.startRight + dx;
+      }
+
+      desiredLeft = clamp(desiredLeft, safeLeft, safeRight - 8);
+      desiredRight = clamp(desiredRight, desiredLeft + 8, safeRight);
+
+      /*
+        Ha jobbra már elfogyott a hely, a további jobbra húzás
+        tovább növeli a szélességet balra egészen SAFE.x-ig.
+      */
+      if (p.x > safeRight) {
+        desiredRight = safeRight;
+        desiredLeft = clamp(
+          i.startLeft - (p.x - i.startRight),
+          safeLeft,
+          desiredRight - 8
+        );
+      }
+
+      const desiredW = Math.max(8, desiredRight - desiredLeft);
+      const desiredCX = desiredLeft + desiredW / 2;
 
       state.textScaleX = clamp(
         i.startScaleX * (desiredW / Math.max(1, i.startW)),
         .25,
-        6
+        8
       );
-
-      const desiredCX = i.anchorX + desiredW / 2;
 
       state.xPct = clamp(
         (desiredCX - SAFE.x) / SAFE.width * 100,
@@ -1401,10 +1431,6 @@
 
       render();
 
-      /*
-        A valódi glyph-doboz közepét korrigáljuk, hogy a kék
-        szöveg jobb széle ténylegesen a fehér vonalig érjen.
-      */
       const actualBox = textVisualBox();
       if (actualBox) {
         const actualCX = actualBox.x + actualBox.width / 2;
@@ -1453,15 +1479,27 @@
       const inst = state.patterns.find(x => x.id === i.patternId);
       if (!inst) return;
 
+      const safeLeft = SAFE.x;
       const safeRight = SAFE.x + SAFE.width;
-      const right = clamp(
-        p.x,
-        i.anchorX + 8,
-        safeRight
-      );
+      const dx = p.x - i.startRight;
 
-      inst.x = i.anchorX;
-      inst.w = Math.max(8, right - i.anchorX);
+      let desiredLeft = i.startLeft - dx;
+      let desiredRight = i.startRight + dx;
+
+      desiredLeft = clamp(desiredLeft, safeLeft, safeRight - 8);
+      desiredRight = clamp(desiredRight, desiredLeft + 8, safeRight);
+
+      if (p.x > safeRight) {
+        desiredRight = safeRight;
+        desiredLeft = clamp(
+          i.startLeft - (p.x - i.startRight),
+          safeLeft,
+          desiredRight - 8
+        );
+      }
+
+      inst.x = desiredLeft;
+      inst.w = Math.max(8, desiredRight - desiredLeft);
 
       updatePatternNodeLive(inst);
       updateSelectionOverlay();
