@@ -374,6 +374,8 @@
       y: clamp(SAFE.y + 8 + (order % 3) * 6, SAFE.y, SAFE.y + SAFE.height - size),
       w: size,
       h: size,
+      aspect: 0,
+      aspectReady: false,
       flipX: false
     };
   }
@@ -389,8 +391,67 @@
       y: clamp(Number(raw.y || SAFE.y), SAFE.y, SAFE.y + SAFE.height - h),
       w,
       h,
+      aspect: Number(raw.aspect || 0),
+      aspectReady: !!raw.aspectReady,
       flipX: !!raw.flipX
     };
+  }
+
+  function svgIntrinsicAspect(source) {
+    if (!source) return 1;
+
+    const vb = String(source.getAttribute('viewBox') || '')
+      .trim()
+      .split(/[\s,]+/)
+      .map(Number);
+
+    if (
+      vb.length === 4 &&
+      Number.isFinite(vb[2]) &&
+      Number.isFinite(vb[3]) &&
+      vb[2] > 0 &&
+      vb[3] > 0
+    ) {
+      return vb[2] / vb[3];
+    }
+
+    const width = parseFloat(source.getAttribute('width')) || 1;
+    const height = parseFloat(source.getAttribute('height')) || 1;
+    return width > 0 && height > 0 ? width / height : 1;
+  }
+
+  function applyPatternAspect(inst, source) {
+    if (!inst || inst.aspectReady) return;
+
+    const aspect = clamp(svgIntrinsicAspect(source), .08, 12);
+    const centerX = inst.x + inst.w / 2;
+    const centerY = inst.y + inst.h / 2;
+
+    /*
+      A régi 76×76-os négyzet helyett a kijelölés a VALÓDI SVG
+      képarányát kapja. Emiatt a kombájn/kamion stb. nem egy
+      nagy üres négyzetben méreteződik.
+    */
+    let h = clamp(inst.h, 18, SAFE.height);
+    let w = h * aspect;
+
+    if (w > SAFE.width) {
+      w = SAFE.width;
+      h = w / aspect;
+    }
+
+    if (h > SAFE.height) {
+      h = SAFE.height;
+      w = h * aspect;
+    }
+
+    inst.w = clamp(w, 18, SAFE.width);
+    inst.h = clamp(h, 18, SAFE.height);
+    inst.x = clamp(centerX - inst.w / 2, SAFE.x, SAFE.x + SAFE.width - inst.w);
+    inst.y = clamp(centerY - inst.h / 2, SAFE.y, SAFE.y + SAFE.height - inst.h);
+    inst.aspect = aspect;
+    inst.aspectReady = true;
+    lastPatternRenderKey = '';
   }
 
   function selectedPatternInstance() {
@@ -675,6 +736,8 @@
     const source = parsed.documentElement;
     if (!source || source.nodeName.toLowerCase() !== 'svg') return null;
 
+    applyPatternAspect(inst, source);
+
     const NS = 'http://www.w3.org/2000/svg';
     const group = document.createElementNS(NS, 'g');
     group.setAttribute('class', 'pattern-instance');
@@ -886,6 +949,60 @@
   }
 
   function currentSelectionBox() {
+    if (selectedObject.type === 'text') {
+      /*
+        Külön vízszintes széthúzó/keskenyítő vezérlő.
+        A sarkok így újra ARÁNYOS méretezést végeznek,
+        ezt a ↔ fogót pedig csak a betűk szélességéhez használjuk.
+      */
+      const stretchX = x + w;
+      const stretchY = y + h / 2;
+
+      const stretchGroup = document.createElementNS(NS, 'g');
+      stretchGroup.setAttribute('class', 'text-stretch-control');
+      stretchGroup.setAttribute(
+        'transform',
+        'translate(' + stretchX.toFixed(2) + ' ' + stretchY.toFixed(2) + ')'
+      );
+      stretchGroup.setAttribute('role', 'button');
+      stretchGroup.setAttribute('aria-label', 'Felirat széthúzása vagy keskenyítése');
+
+      const stretchCircle = document.createElementNS(NS, 'circle');
+      stretchCircle.setAttribute('r', '7.2');
+      stretchCircle.setAttribute('class', 'text-stretch-circle');
+      stretchGroup.appendChild(stretchCircle);
+
+      const stretchText = document.createElementNS(NS, 'text');
+      stretchText.setAttribute('class', 'text-stretch-icon');
+      stretchText.setAttribute('x', '0');
+      stretchText.setAttribute('y', '0.8');
+      stretchText.setAttribute('text-anchor', 'middle');
+      stretchText.setAttribute('dominant-baseline', 'middle');
+      stretchText.textContent = '↔';
+      stretchGroup.appendChild(stretchText);
+
+      stretchGroup.addEventListener('pointerdown', evt => {
+        evt.preventDefault();
+        evt.stopPropagation();
+
+        const selection = currentSelectionBox();
+        if (!selection) return;
+
+        directEditInteraction = {
+          mode:'text-stretch',
+          pointerId:evt.pointerId,
+          anchorX:selection.x,
+          anchorCenterY:selection.y + selection.height / 2,
+          startScaleX:state.textScaleX,
+          startBoxW:Math.max(1, selection.width)
+        };
+
+        try { els.designSvg.setPointerCapture(evt.pointerId); } catch (_) {}
+      });
+
+      els.selectionLayer.appendChild(stretchGroup);
+    }
+
     if (selectedObject.type === 'pattern') {
       const inst = selectedPatternInstance();
       return inst ? { x:inst.x, y:inst.y, width:inst.w, height:inst.h } : null;
@@ -952,13 +1069,17 @@
           const inst = selectedPatternInstance();
           if (!inst) return;
 
+          const isLeftHandle = handleIndex === 0 || handleIndex === 2;
+          const isTopHandle = handleIndex === 0 || handleIndex === 1;
+
           directEditInteraction = {
             mode:'pattern-resize',
             pointerId:evt.pointerId,
             patternId:inst.id,
-            startDistance,
-            centerX:cx,
-            centerY:cy,
+            isLeftHandle,
+            isTopHandle,
+            anchorX: isLeftHandle ? inst.x + inst.w : inst.x,
+            anchorY: isTopHandle ? inst.y + inst.h : inst.y,
             startW:inst.w,
             startH:inst.h
           };
@@ -990,7 +1111,8 @@
             startFontSize:state.fontSize,
             startScaleX:state.textScaleX,
             startBoxW:Math.max(1, selection.width),
-            startBoxH:Math.max(1, selection.height)
+            startBoxH:Math.max(1, selection.height),
+            startAspect:Math.max(.01, selection.width / Math.max(1, selection.height))
           };
         }
 
@@ -1123,78 +1245,60 @@
 
     if (directEditInteraction.mode === 'text-resize') {
       /*
-        FONTOS:
-        Nem a narancssárga keret, hanem a tényleges szöveg széle
-        határozza meg a méretet.
-
-        A húzott sarok követi az egeret, az ellentétes szövegsarok
-        fix marad. A húzott szövegszél maximum a FEHÉR szaggatott
-        Biztonsági zónáig mehet.
+        A 4 sarokfogó ismét ARÁNYOSAN nagyít/kicsinyít.
+        A betűk széthúzására külön ↔ fogó van a jobb oldalon.
       */
       const i = directEditInteraction;
-      const minW = 8;
-      const minH = 8;
 
-      const safeLeft = SAFE.x;
-      const safeRight = SAFE.x + SAFE.width;
-      const safeTop = SAFE.y;
-      const safeBottom = SAFE.y + SAFE.height;
+      const availableW = i.isLeftHandle
+        ? i.anchorX - SAFE.x
+        : SAFE.x + SAFE.width - i.anchorX;
 
-      let left;
-      let right;
-      let top;
-      let bottom;
+      const availableH = i.isTopHandle
+        ? i.anchorY - SAFE.y
+        : SAFE.y + SAFE.height - i.anchorY;
 
-      if (i.isLeftHandle) {
-        right = clamp(i.anchorX, safeLeft + minW, safeRight);
-        left = clamp(p.x, safeLeft, right - minW);
-      } else {
-        left = clamp(i.anchorX, safeLeft, safeRight - minW);
-        right = clamp(p.x, left + minW, safeRight);
-      }
+      const desiredW = Math.max(8, Math.abs(p.x - i.anchorX));
+      const desiredH = Math.max(8, Math.abs(p.y - i.anchorY));
 
-      if (i.isTopHandle) {
-        bottom = clamp(i.anchorY, safeTop + minH, safeBottom);
-        top = clamp(p.y, safeTop, bottom - minH);
-      } else {
-        top = clamp(i.anchorY, safeTop, safeBottom - minH);
-        bottom = clamp(p.y, top + minH, safeBottom);
-      }
+      const pointerScale = Math.max(
+        desiredW / Math.max(1, i.startBoxW),
+        desiredH / Math.max(1, i.startBoxH)
+      );
 
-      const desiredW = Math.max(minW, right - left);
-      const desiredH = Math.max(minH, bottom - top);
-      const desiredCX = (left + right) / 2;
-      const desiredCY = (top + bottom) / 2;
+      const maxScale = Math.max(
+        .05,
+        Math.min(
+          availableW / Math.max(1, i.startBoxW),
+          availableH / Math.max(1, i.startBoxH)
+        )
+      );
 
-      /*
-        1) A magasságból számoljuk a fontméretet.
-        2) A szélességből külön számoljuk a vízszintes nyújtást.
-        Ezért a felirat szélessége független a magassági limittől.
-      */
-      const fontRatio = desiredH / Math.max(1, i.startBoxH);
+      const scale = clamp(pointerScale, .1, maxScale);
 
       state.fontSize = clamp(
-        i.startFontSize * fontRatio,
+        i.startFontSize * scale,
         18,
         280
       );
 
-      const actualFontRatio =
-        state.fontSize / Math.max(1, i.startFontSize);
-
-      const estimatedWidthAtScale1 =
-        (i.startBoxW / Math.max(.01, i.startScaleX)) *
-        actualFontRatio;
-
+      /*
+        A sarokfogó az aktuális betűszélesség arányát megtartja.
+      */
       state.textScaleX = clamp(
-        desiredW / Math.max(1, estimatedWidthAtScale1),
+        i.startScaleX,
         .25,
         6
       );
 
-      /*
-        A szöveg középpontját először a kívánt doboz közepére tesszük.
-      */
+      const targetW = i.startBoxW * scale;
+      const targetH = i.startBoxH * scale;
+
+      const left = i.isLeftHandle ? i.anchorX - targetW : i.anchorX;
+      const top = i.isTopHandle ? i.anchorY - targetH : i.anchorY;
+      const desiredCX = left + targetW / 2;
+      const desiredCY = top + targetH / 2;
+
       state.xPct = clamp(
         (desiredCX - SAFE.x) / SAFE.width * 100,
         0,
@@ -1209,28 +1313,19 @@
 
       render();
 
-      /*
-        A különböző fontok tényleges glyph-bboxa nem mindig pontosan
-        a számított középpontra esik. Ezért a VALÓDI renderelt szöveget
-        még egyszer megmérjük, és annak közepét igazítjuk a kívánt
-        helyre. Ettől a szöveg széle pontosan a fehér vonalig érhet.
-      */
       const actualBox = textVisualBox();
-
       if (actualBox) {
         const actualCX = actualBox.x + actualBox.width / 2;
         const actualCY = actualBox.y + actualBox.height / 2;
 
         state.xPct = clamp(
-          state.xPct +
-          (desiredCX - actualCX) / SAFE.width * 100,
+          state.xPct + (desiredCX - actualCX) / SAFE.width * 100,
           0,
           100
         );
 
         state.yPct = clamp(
-          state.yPct +
-          (desiredCY - actualCY) / SAFE.height * 100,
+          state.yPct + (desiredCY - actualCY) / SAFE.height * 100,
           0,
           100
         );
@@ -1238,9 +1333,52 @@
         render();
       }
 
+      constrainTextToSafeZone(false);
+      return;
+    }
+
+    if (directEditInteraction.mode === 'text-stretch') {
       /*
-        Csak pozíciókorrekció: itt már nem kicsinyítjük vissza.
+        Csak a VALÓDI szövegszélességet módosítjuk.
+        A bal szövegszél fix, a jobb szövegszél maximum
+        a fehér Biztonsági zónáig húzható.
       */
+      const i = directEditInteraction;
+      const right = clamp(
+        p.x,
+        i.anchorX + 8,
+        SAFE.x + SAFE.width
+      );
+
+      const desiredW = right - i.anchorX;
+
+      state.textScaleX = clamp(
+        i.startScaleX * (desiredW / Math.max(1, i.startBoxW)),
+        .25,
+        6
+      );
+
+      const desiredCX = i.anchorX + desiredW / 2;
+
+      state.xPct = clamp(
+        (desiredCX - SAFE.x) / SAFE.width * 100,
+        0,
+        100
+      );
+
+      render();
+
+      const actualBox = textVisualBox();
+      if (actualBox) {
+        state.xPct = clamp(
+          state.xPct +
+          (desiredCX - (actualBox.x + actualBox.width / 2)) / SAFE.width * 100,
+          0,
+          100
+        );
+        render();
+      }
+
       constrainTextToSafeZone(false);
       return;
     }
@@ -1271,43 +1409,55 @@
     }
 
     if (directEditInteraction.mode === 'pattern-resize') {
-      const inst = state.patterns.find(x => x.id === directEditInteraction.patternId);
+      const i = directEditInteraction;
+      const inst = state.patterns.find(x => x.id === i.patternId);
       if (!inst) return;
 
-      const distance = Math.max(
-        1,
-        Math.hypot(
-          p.x - directEditInteraction.centerX,
-          p.y - directEditInteraction.centerY
+      /*
+        A minta mindig az eredeti SVG képarányával nő/kicsinyedik.
+        Az ellentétes sarok fix marad.
+      */
+      const availableW = i.isLeftHandle
+        ? i.anchorX - SAFE.x
+        : SAFE.x + SAFE.width - i.anchorX;
+
+      const availableH = i.isTopHandle
+        ? i.anchorY - SAFE.y
+        : SAFE.y + SAFE.height - i.anchorY;
+
+      const desiredW = Math.max(8, Math.abs(p.x - i.anchorX));
+      const desiredH = Math.max(8, Math.abs(p.y - i.anchorY));
+
+      const pointerScale = Math.max(
+        desiredW / Math.max(1, i.startW),
+        desiredH / Math.max(1, i.startH)
+      );
+
+      const maxScale = Math.max(
+        .05,
+        Math.min(
+          availableW / Math.max(1, i.startW),
+          availableH / Math.max(1, i.startH)
         )
       );
 
-      let ratio = distance / directEditInteraction.startDistance;
-      ratio = Math.min(
-        ratio,
-        SAFE.width / directEditInteraction.startW,
-        SAFE.height / directEditInteraction.startH
-      );
+      const scale = clamp(pointerScale, .1, maxScale);
 
-      const newW = clamp(directEditInteraction.startW * ratio, 18, SAFE.width);
-      const newH = clamp(directEditInteraction.startH * ratio, 18, SAFE.height);
+      const newW = i.startW * scale;
+      const newH = i.startH * scale;
 
       inst.w = newW;
       inst.h = newH;
-      inst.x = clamp(
-        directEditInteraction.centerX - newW / 2,
-        SAFE.x,
-        SAFE.x + SAFE.width - newW
-      );
-      inst.y = clamp(
-        directEditInteraction.centerY - newH / 2,
-        SAFE.y,
-        SAFE.y + SAFE.height - newH
-      );
+      inst.x = i.isLeftHandle ? i.anchorX - newW : i.anchorX;
+      inst.y = i.isTopHandle ? i.anchorY - newH : i.anchorY;
+
+      inst.x = clamp(inst.x, SAFE.x, SAFE.x + SAFE.width - inst.w);
+      inst.y = clamp(inst.y, SAFE.y, SAFE.y + SAFE.height - inst.h);
 
       updatePatternNodeLive(inst);
       updateSelectionOverlay();
       queueSnapshotSave();
+      return;
     }
   }
 
