@@ -1260,9 +1260,12 @@
 
     if (directEditInteraction.mode === 'text-resize') {
       /*
-        ARÁNYOS szövegméretezés a sarkokkal.
-        Az ellentétes sarok fix marad, a növelés maximuma pedig
-        kizárólag a FEHÉR szaggatott Biztonsági zóna.
+        HIBRID MÉRETEZÉS:
+        1. A sarok húzásakor először méretarányosan nő a felirat.
+        2. Ha magasságban eléri a fehér Biztonsági zónát,
+           a további jobbra/balra húzás már csak a SZÉLESSÉGET növeli.
+        3. Így a felirat a Biztonsági zóna teljes szélességét
+           kihasználhatja anélkül, hogy felül/alul kilógna.
       */
       const i = directEditInteraction;
 
@@ -1271,58 +1274,108 @@
       const safeTop = SAFE.y;
       const safeBottom = SAFE.y + SAFE.height;
 
-      const availableW = i.isLeftHandle
-        ? i.anchorX - safeLeft
-        : safeRight - i.anchorX;
+      const availableW = Math.max(
+        8,
+        i.isLeftHandle
+          ? i.anchorX - safeLeft
+          : safeRight - i.anchorX
+      );
 
-      const availableH = i.isTopHandle
-        ? i.anchorY - safeTop
-        : safeBottom - i.anchorY;
+      const availableH = Math.max(
+        8,
+        i.isTopHandle
+          ? i.anchorY - safeTop
+          : safeBottom - i.anchorY
+      );
 
-      const desiredW = Math.max(8, Math.abs(p.x - i.anchorX));
-      const desiredH = Math.max(8, Math.abs(p.y - i.anchorY));
+      const desiredW = Math.max(
+        8,
+        Math.abs(p.x - i.anchorX)
+      );
 
-      /*
-        Arányt tartunk: ugyanazzal a szorzóval nő a szélesség és a magasság.
-        A felhasználó bármely irányba húzhat, az erősebb húzás határozza meg
-        a skálát, de a fehér SAFE zóna soha nem léphető túl.
-      */
-      const desiredScale = Math.max(
+      const desiredH = Math.max(
+        8,
+        Math.abs(p.y - i.anchorY)
+      );
+
+      const pointerScale = Math.max(
         desiredW / Math.max(1, i.startBoxW),
         desiredH / Math.max(1, i.startBoxH)
       );
 
-      const maxScale = Math.max(
-        .05,
-        Math.min(
-          availableW / Math.max(1, i.startBoxW),
-          availableH / Math.max(1, i.startBoxH)
-        )
+      const maxWidthScale =
+        availableW / Math.max(1, i.startBoxW);
+
+      const maxHeightScale =
+        availableH / Math.max(1, i.startBoxH);
+
+      const proportionalScale = clamp(
+        pointerScale,
+        .1,
+        Math.min(maxWidthScale, maxHeightScale)
       );
 
-      const scale = clamp(desiredScale, .1, maxScale);
+      /*
+        Normál, arányos nagyítás.
+      */
+      let heightScale = proportionalScale;
+      let targetW = i.startBoxW * proportionalScale;
+      let targetH = i.startBoxH * proportionalScale;
+      let nextScaleX = i.startScaleX;
+
+      /*
+        Ha a MAGASSÁG fogy el előbb, de szélességben még van hely,
+        a sarok további vízszintes húzása széthúzza a feliratot.
+        Ez az a rész, amitől a PETI még nagyobbra húzható a képen
+        látható állapotnál.
+      */
+      if (
+        maxHeightScale < maxWidthScale &&
+        pointerScale >= maxHeightScale
+      ) {
+        heightScale = maxHeightScale;
+        targetH = i.startBoxH * heightScale;
+
+        const pointerTargetW = clamp(
+          desiredW,
+          i.startBoxW * heightScale,
+          availableW
+        );
+
+        targetW = pointerTargetW;
+
+        const proportionalWidthAtHeightLimit =
+          i.startBoxW * heightScale;
+
+        nextScaleX = clamp(
+          i.startScaleX *
+            (targetW / Math.max(1, proportionalWidthAtHeightLimit)),
+          .25,
+          8
+        );
+      }
 
       state.fontSize = clamp(
-        i.startFontSize * scale,
+        i.startFontSize * heightScale,
         18,
         280
       );
 
+      state.textScaleX = nextScaleX;
+
       /*
-        A meglévő betűszélességi arányt megtartjuk,
-        tehát a sarokfogó nem torzítja a feliratot.
+        Az ellentétes sarok továbbra is fix marad.
       */
-      state.textScaleX = clamp(
-        i.startScaleX,
-        .25,
-        6
-      );
+      const left =
+        i.isLeftHandle
+          ? i.anchorX - targetW
+          : i.anchorX;
 
-      const targetW = i.startBoxW * scale;
-      const targetH = i.startBoxH * scale;
+      const top =
+        i.isTopHandle
+          ? i.anchorY - targetH
+          : i.anchorY;
 
-      const left = i.isLeftHandle ? i.anchorX - targetW : i.anchorX;
-      const top = i.isTopHandle ? i.anchorY - targetH : i.anchorY;
       const desiredCX = left + targetW / 2;
       const desiredCY = top + targetH / 2;
 
@@ -1341,25 +1394,28 @@
       render();
 
       /*
-        Font glyph-bbox korrekció: a VALÓDI kék szöveg doboza
-        kerüljön a kiszámított helyre, ne a narancssárga segédkeret.
+        A tényleges betűkontúr dobozát korrigáljuk a kívánt
+        középpontra, így a kék felirat széle követi a fogót.
       */
       const actualBox = textVisualBox();
 
       if (actualBox) {
-        const actualCX = actualBox.x + actualBox.width / 2;
-        const actualCY = actualBox.y + actualBox.height / 2;
+        const actualCX =
+          actualBox.x + actualBox.width / 2;
+
+        const actualCY =
+          actualBox.y + actualBox.height / 2;
 
         state.xPct = clamp(
           state.xPct +
-          (desiredCX - actualCX) / SAFE.width * 100,
+            (desiredCX - actualCX) / SAFE.width * 100,
           0,
           100
         );
 
         state.yPct = clamp(
           state.yPct +
-          (desiredCY - actualCY) / SAFE.height * 100,
+            (desiredCY - actualCY) / SAFE.height * 100,
           0,
           100
         );
@@ -1367,10 +1423,6 @@
         render();
       }
 
-      /*
-        Itt már csak pozíciókorrekció történhet.
-        Nem kicsinyítjük vissza a feliratot.
-      */
       constrainTextToSafeZone(false);
       return;
     }
@@ -1389,30 +1441,48 @@
       */
       const dx = p.x - i.startRight;
 
-      let desiredLeft = i.startLeft - dx;
-      let desiredRight = i.startRight + dx;
+      let desiredLeft;
+      let desiredRight;
 
-      if (dx < 0) {
-        /* keskenyítésnél is szimmetrikusan közelítjük a két oldalt */
-        desiredLeft = i.startLeft - dx;
-        desiredRight = i.startRight + dx;
-      }
+      if (dx >= 0) {
+        /*
+          0..1 progress: amikor a ↔ fogó eléri a fehér jobb határt,
+          a bal szél is eléri a fehér bal határt.
+        */
+        const rightRoom = Math.max(1, safeRight - i.startRight);
+        const progress = clamp(dx / rightRoom, 0, 1);
 
-      desiredLeft = clamp(desiredLeft, safeLeft, safeRight - 8);
-      desiredRight = clamp(desiredRight, desiredLeft + 8, safeRight);
+        desiredRight =
+          i.startRight +
+          (safeRight - i.startRight) * progress;
 
-      /*
-        Ha jobbra már elfogyott a hely, a további jobbra húzás
-        tovább növeli a szélességet balra egészen SAFE.x-ig.
-      */
-      if (p.x > safeRight) {
-        desiredRight = safeRight;
-        desiredLeft = clamp(
-          i.startLeft - (p.x - i.startRight),
-          safeLeft,
-          desiredRight - 8
+        desiredLeft =
+          i.startLeft -
+          (i.startLeft - safeLeft) * progress;
+      } else {
+        /*
+          Keskenyítés: a két oldal a közép felé közelít.
+        */
+        const shrink = Math.min(
+          -dx,
+          Math.max(0, (i.startW - 8) / 2)
         );
+
+        desiredLeft = i.startLeft + shrink;
+        desiredRight = i.startRight - shrink;
       }
+
+      desiredLeft = clamp(
+        desiredLeft,
+        safeLeft,
+        safeRight - 8
+      );
+
+      desiredRight = clamp(
+        desiredRight,
+        desiredLeft + 8,
+        safeRight
+      );
 
       const desiredW = Math.max(8, desiredRight - desiredLeft);
       const desiredCX = desiredLeft + desiredW / 2;
