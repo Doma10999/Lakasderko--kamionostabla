@@ -3,7 +3,7 @@
 
   /*
     LAKÁS DEKOR – KAMIONOS LED TÁBLA / UNAS
-    V4 – mobilbarát, stabil rendelési integráció a házszámtábla-tervező bevált logikája alapján
+    V5 – stabil Tervezés gomb + rendelési integráció
 
     FONTOS:
     - UNAS beszúrás: body end
@@ -17,7 +17,7 @@
   */
 
   const CFG = {
-    version: '20260921-kamion-v4-mobile-stabil',
+    version: '20260921-kamion-v5-button-fix',
     productPath: '/Tervezd-meg-sajatodat',
     productNameRx: /tervezd\s+meg\s+saj[aá]todat/i,
     productSkuRx: /FL340481/i,
@@ -217,7 +217,7 @@
   }
 
   function selectScore(select, labels) {
-    const options = Array.from(select?.options || []).map(function (o) {
+    const options = Array.from((select && select.options) || []).map(function (o) {
       return norm(txt(o));
     });
 
@@ -582,7 +582,7 @@
 
     if (!input) {
       console.warn(
-        '[Kamionos LED V4] Nem található a natív Tervazonosító mező. Paraméter ID:',
+        '[Kamionos LED V5] Nem található a natív Tervazonosító mező. Paraméter ID:',
         CFG.nativeParamId
       );
       return false;
@@ -696,7 +696,14 @@
         'box-sizing:border-box;' +
         'margin:0 0 10px;';
 
-      button.parentElement.insertBefore(wrap, button);
+      var cartRow = button.parentElement;
+      var outerHost = cartRow && cartRow.parentElement;
+
+      if (outerHost) {
+        outerHost.insertBefore(wrap, cartRow);
+      } else if (cartRow) {
+        cartRow.insertBefore(wrap, button);
+      }
     }
 
     if (!designerButton) {
@@ -924,13 +931,46 @@
     installProductPage();
   }
 
-  install();
+  function bootKamionIntegration() {
+    install();
 
-  [250, 700, 1500, 3000, 5000].forEach(function (delay) {
-    setTimeout(function () {
+    [100, 300, 700, 1200, 2000, 3500, 5500, 8000].forEach(function (delay) {
+      setTimeout(function () {
+        installProductPage();
+      }, delay);
+    });
+
+    var observerTimer = null;
+
+    try {
+      var observer = new MutationObserver(function () {
+        clearTimeout(observerTimer);
+
+        observerTimer = setTimeout(function () {
+          installProductPage();
+        }, 80);
+      });
+
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true
+      });
+    } catch (_) {}
+
+    setInterval(function () {
       installProductPage();
-    }, delay);
-  });
+    }, 1500);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener(
+      'DOMContentLoaded',
+      bootKamionIntegration,
+      { once: true }
+    );
+  } else {
+    bootKamionIntegration();
+  }
 
   document.addEventListener('submit', function (event) {
     if (!isProductPage || !state.hasDesign) return;
@@ -969,7 +1009,7 @@
   }, true);
 
   console.log(
-    '[Kamionos LED V4] aktív:',
+    '[Kamionos LED V5] aktív:',
     CFG.version,
     'terv:',
     state.id || '-',
