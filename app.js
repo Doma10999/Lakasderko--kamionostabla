@@ -902,11 +902,16 @@
     if (!box || !Number.isFinite(box.width) || !Number.isFinite(box.height)) return;
 
     const NS = 'http://www.w3.org/2000/svg';
-    const pad = 1.8;
-    const x = box.x - pad;
-    const y = box.y - pad;
-    const w = box.width + pad * 2;
-    const h = box.height + pad * 2;
+    /*
+      A narancssárga kijelölő keret csak vizuális segéd.
+      A méretezés alapja maga a VALÓDI szöveg/minta doboza.
+      Nincs extra belső/külső ráhagyás.
+    */
+    const pad = 0;
+    const x = box.x;
+    const y = box.y;
+    const w = box.width;
+    const h = box.height;
 
     const rect = document.createElementNS(NS, 'rect');
     rect.setAttribute('class', 'truck-selection-box');
@@ -922,7 +927,7 @@
       [x + w, y],
       [x, y + h],
       [x + w, y + h]
-    ].forEach(coords => {
+    ].forEach((coords, handleIndex) => {
       const handle = document.createElementNS(NS, 'circle');
       handle.setAttribute('class', 'truck-resize-handle');
       handle.setAttribute('cx', coords[0].toFixed(2));
@@ -958,11 +963,30 @@
             startH:inst.h
           };
         } else {
+          const isLeftHandle = handleIndex === 0 || handleIndex === 2;
+          const isTopHandle = handleIndex === 0 || handleIndex === 1;
+
           directEditInteraction = {
             mode:'text-resize',
             pointerId:evt.pointerId,
-            centerX:cx,
-            centerY:cy,
+            handleIndex,
+            isLeftHandle,
+            isTopHandle,
+
+            /*
+              Az ellentétes szövegsarok fix marad.
+              Emiatt ha a jobb oldali fogót húzod jobbra, a bal szövegszél
+              nem mozdul el, a jobb szövegszél pedig ténylegesen a
+              fehér Biztonsági zónáig húzható.
+            */
+            anchorX: isLeftHandle
+              ? selection.x + selection.width
+              : selection.x,
+
+            anchorY: isTopHandle
+              ? selection.y + selection.height
+              : selection.y,
+
             startFontSize:state.fontSize,
             startScaleX:state.textScaleX,
             startBoxW:Math.max(1, selection.width),
@@ -1099,81 +1123,123 @@
 
     if (directEditInteraction.mode === 'text-resize') {
       /*
-        A szélességet és a magasságot teljesen külön kezeljük.
-        Ez oldja meg azt a hibát, hogy a szöveg magassági limitje
-        korábban megállította a vízszintes növelést is.
+        FONTOS:
+        Nem a narancssárga keret, hanem a tényleges szöveg széle
+        határozza meg a méretet.
+
+        A húzott sarok követi az egeret, az ellentétes szövegsarok
+        fix marad. A húzott szövegszél maximum a FEHÉR szaggatott
+        Biztonsági zónáig mehet.
       */
-      const cx = directEditInteraction.centerX;
-      const cy = directEditInteraction.centerY;
+      const i = directEditInteraction;
+      const minW = 8;
+      const minH = 8;
 
-      const maxHalfW = Math.max(
-        1,
-        Math.min(
-          cx - SAFE.x,
-          SAFE.x + SAFE.width - cx
-        )
-      );
+      const safeLeft = SAFE.x;
+      const safeRight = SAFE.x + SAFE.width;
+      const safeTop = SAFE.y;
+      const safeBottom = SAFE.y + SAFE.height;
 
-      const maxHalfH = Math.max(
-        1,
-        Math.min(
-          cy - SAFE.y,
-          SAFE.y + SAFE.height - cy
-        )
-      );
+      let left;
+      let right;
+      let top;
+      let bottom;
 
-      const desiredW = clamp(
-        Math.abs(p.x - cx) * 2,
-        8,
-        maxHalfW * 2
-      );
+      if (i.isLeftHandle) {
+        right = clamp(i.anchorX, safeLeft + minW, safeRight);
+        left = clamp(p.x, safeLeft, right - minW);
+      } else {
+        left = clamp(i.anchorX, safeLeft, safeRight - minW);
+        right = clamp(p.x, left + minW, safeRight);
+      }
 
-      const desiredH = clamp(
-        Math.abs(p.y - cy) * 2,
-        8,
-        maxHalfH * 2
-      );
+      if (i.isTopHandle) {
+        bottom = clamp(i.anchorY, safeTop + minH, safeBottom);
+        top = clamp(p.y, safeTop, bottom - minH);
+      } else {
+        top = clamp(i.anchorY, safeTop, safeBottom - minH);
+        bottom = clamp(p.y, top + minH, safeBottom);
+      }
+
+      const desiredW = Math.max(minW, right - left);
+      const desiredH = Math.max(minH, bottom - top);
+      const desiredCX = (left + right) / 2;
+      const desiredCY = (top + bottom) / 2;
 
       /*
-        Először a magasságból számoljuk a fontméretet.
-        Utána a kívánt SZÉLESSÉGET külön állítjuk be a vízszintes
-        skálával. Emiatt akár a teljes fehér szaggatott vonalig
-        kihúzható a felirat.
+        1) A magasságból számoljuk a fontméretet.
+        2) A szélességből külön számoljuk a vízszintes nyújtást.
+        Ezért a felirat szélessége független a magassági limittől.
       */
-      const heightRatio =
-        desiredH /
-        Math.max(1, directEditInteraction.startBoxH);
+      const fontRatio = desiredH / Math.max(1, i.startBoxH);
 
-      const nextFontSize = clamp(
-        directEditInteraction.startFontSize * heightRatio,
+      state.fontSize = clamp(
+        i.startFontSize * fontRatio,
         18,
         280
       );
 
       const actualFontRatio =
-        nextFontSize /
-        Math.max(1, directEditInteraction.startFontSize);
+        state.fontSize / Math.max(1, i.startFontSize);
 
-      const estimatedUnscaledWidth =
-        (directEditInteraction.startBoxW /
-          Math.max(.01, directEditInteraction.startScaleX)) *
+      const estimatedWidthAtScale1 =
+        (i.startBoxW / Math.max(.01, i.startScaleX)) *
         actualFontRatio;
 
-      const nextScaleX = clamp(
-        desiredW /
-          Math.max(1, estimatedUnscaledWidth),
+      state.textScaleX = clamp(
+        desiredW / Math.max(1, estimatedWidthAtScale1),
         .25,
         6
       );
 
-      state.fontSize = nextFontSize;
-      state.textScaleX = nextScaleX;
+      /*
+        A szöveg középpontját először a kívánt doboz közepére tesszük.
+      */
+      state.xPct = clamp(
+        (desiredCX - SAFE.x) / SAFE.width * 100,
+        0,
+        100
+      );
+
+      state.yPct = clamp(
+        (desiredCY - SAFE.y) / SAFE.height * 100,
+        0,
+        100
+      );
 
       render();
 
       /*
-        Itt már NEM szabad újra lekicsinyíteni a feliratot.
-        Csak a helyét korrigáljuk, ha a szaggatott terület széléhez ér.
+        A különböző fontok tényleges glyph-bboxa nem mindig pontosan
+        a számított középpontra esik. Ezért a VALÓDI renderelt szöveget
+        még egyszer megmérjük, és annak közepét igazítjuk a kívánt
+        helyre. Ettől a szöveg széle pontosan a fehér vonalig érhet.
+      */
+      const actualBox = textVisualBox();
+
+      if (actualBox) {
+        const actualCX = actualBox.x + actualBox.width / 2;
+        const actualCY = actualBox.y + actualBox.height / 2;
+
+        state.xPct = clamp(
+          state.xPct +
+          (desiredCX - actualCX) / SAFE.width * 100,
+          0,
+          100
+        );
+
+        state.yPct = clamp(
+          state.yPct +
+          (desiredCY - actualCY) / SAFE.height * 100,
+          0,
+          100
+        );
+
+        render();
+      }
+
+      /*
+        Csak pozíciókorrekció: itt már nem kicsinyítjük vissza.
       */
       constrainTextToSafeZone(false);
       return;
