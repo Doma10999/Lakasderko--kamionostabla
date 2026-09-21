@@ -140,6 +140,10 @@ input[type=range]{width:100%;accent-color:#27221f}
 .truck-selection-box{fill:none;stroke:#e07b27;stroke-width:1.1;stroke-dasharray:5 3;vector-effect:non-scaling-stroke;pointer-events:none}
 .truck-resize-handle{fill:#fff;stroke:#e07b27;stroke-width:1.2;vector-effect:non-scaling-stroke;cursor:nwse-resize;touch-action:none;pointer-events:all}
 .selection-layer{touch-action:none}
+.pattern-mirror-control{pointer-events:all;cursor:pointer;touch-action:none}
+.pattern-mirror-circle{fill:#fff;stroke:#e07b27;stroke-width:1.2;vector-effect:non-scaling-stroke}
+.pattern-mirror-icon{fill:#d86d17;font-size:10px;font-weight:900;font-family:Arial,sans-serif;pointer-events:none;user-select:none}
+.pattern-mirror-control:hover .pattern-mirror-circle{fill:#fff7ef}
 .loading{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:12px;align-items:center;background:rgba(255,255,255,.96);border:1px solid #ddd5cf;border-radius:14px;padding:14px 16px;color:#5d514b;z-index:6;transition:opacity .16s}
 .loading.hidden{opacity:0;pointer-events:none}
 .spinner{width:18px;height:18px;border:2px solid #e7ddd6;border-top-color:#2d2724;border-radius:50%;animation:spin .8s linear infinite}

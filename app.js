@@ -168,8 +168,8 @@
     engraving: params.get('grav') === 'fill' ? 'fill' : 'outline',
     patterns: [],
     led: LED_COLORS.some(c => c.id === params.get('led')) ? params.get('led') : 'blue',
-    fontSize: clamp(Number(params.get('meret') || 68), 18, 180),
-    textScaleX: clamp(Number(params.get('szelesseg') || 100), 55, 140) / 100,
+    fontSize: clamp(Number(params.get('meret') || 68), 18, 280),
+    textScaleX: clamp(Number(params.get('szelesseg') || 100), 40, 300) / 100,
     xPct: clamp(Number(params.get('x') || 50), 0, 100),
     yPct: clamp(Number(params.get('y') || 50), 0, 100),
     showSafe: true,
@@ -298,8 +298,8 @@
     state.fontId = FONTS.some(f => f.id === snap.fontId) ? snap.fontId : 'bahnschrift';
     state.engraving = snap.engraving === 'fill' ? 'fill' : 'outline';
     state.led = LED_COLORS.some(c => c.id === snap.led) ? snap.led : 'blue';
-    state.fontSize = clamp(snap.fontSize, 18, 180);
-    state.textScaleX = clamp(Number(snap.textScaleX || 1), .55, 1.4);
+    state.fontSize = clamp(snap.fontSize, 18, 280);
+    state.textScaleX = clamp(Number(snap.textScaleX || 1), .4, 3);
     state.xPct = clamp(snap.xPct, 0, 100);
     state.yPct = clamp(snap.yPct, 0, 100);
     state.showSafe = snap.showSafe !== false;
@@ -961,10 +961,12 @@
           directEditInteraction = {
             mode:'text-resize',
             pointerId:evt.pointerId,
-            startDistance,
             centerX:cx,
             centerY:cy,
-            startFontSize:state.fontSize
+            startFontSize:state.fontSize,
+            startScaleX:state.textScaleX,
+            startHalfW:Math.max(1, selection.width / 2),
+            startHalfH:Math.max(1, selection.height / 2)
           };
         }
 
@@ -973,6 +975,47 @@
 
       els.selectionLayer.appendChild(handle);
     });
+
+    if (selectedObject.type === 'pattern') {
+      const inst = selectedPatternInstance();
+
+      if (inst) {
+        const controlY = Math.max(6, y - 11);
+        const controlX = x + w / 2;
+
+        const mirrorGroup = document.createElementNS(NS, 'g');
+        mirrorGroup.setAttribute('class', 'pattern-mirror-control');
+        mirrorGroup.setAttribute('transform', 'translate(' + controlX.toFixed(2) + ' ' + controlY.toFixed(2) + ')');
+        mirrorGroup.setAttribute('role', 'button');
+        mirrorGroup.setAttribute('aria-label', 'Minta tükrözése');
+
+        const mirrorCircle = document.createElementNS(NS, 'circle');
+        mirrorCircle.setAttribute('r', '7.2');
+        mirrorCircle.setAttribute('class', 'pattern-mirror-circle');
+        mirrorGroup.appendChild(mirrorCircle);
+
+        const mirrorText = document.createElementNS(NS, 'text');
+        mirrorText.setAttribute('class', 'pattern-mirror-icon');
+        mirrorText.setAttribute('x', '0');
+        mirrorText.setAttribute('y', '0.8');
+        mirrorText.setAttribute('text-anchor', 'middle');
+        mirrorText.setAttribute('dominant-baseline', 'middle');
+        mirrorText.textContent = '↔';
+        mirrorGroup.appendChild(mirrorText);
+
+        mirrorGroup.addEventListener('pointerdown', evt => {
+          evt.preventDefault();
+          evt.stopPropagation();
+
+          inst.flipX = !inst.flipX;
+          updatePatternNodeLive(inst);
+          queueSnapshotSave();
+          updateSelectionOverlay();
+        });
+
+        els.selectionLayer.appendChild(mirrorGroup);
+      }
+    }
   }
 
   function startDirectTextDrag(evt) {
@@ -1055,16 +1098,34 @@
     }
 
     if (directEditInteraction.mode === 'text-resize') {
-      const distance = Math.max(
-        1,
-        Math.hypot(
-          p.x - directEditInteraction.centerX,
-          p.y - directEditInteraction.centerY
-        )
+      /*
+        Szabad, kétirányú átméretezés:
+        - függőleges húzás -> betűmagasság / fontSize
+        - vízszintes húzás -> betűszélesség / textScaleX
+        Így a PETI vízszintesen egészen a fehér szaggatott
+        gyártási határig kihúzható anélkül, hogy túl magas lenne.
+      */
+      const halfW = Math.max(1, Math.abs(p.x - directEditInteraction.centerX));
+      const halfH = Math.max(1, Math.abs(p.y - directEditInteraction.centerY));
+
+      const widthRatio = halfW / directEditInteraction.startHalfW;
+      const heightRatio = halfH / directEditInteraction.startHalfH;
+
+      const nextFontSize = clamp(
+        directEditInteraction.startFontSize * heightRatio,
+        18,
+        280
       );
 
-      const ratio = distance / directEditInteraction.startDistance;
-      state.fontSize = clamp(directEditInteraction.startFontSize * ratio, 18, 180);
+      const nextScaleX = clamp(
+        directEditInteraction.startScaleX * (widthRatio / Math.max(.05, heightRatio)),
+        .4,
+        3
+      );
+
+      state.fontSize = nextFontSize;
+      state.textScaleX = nextScaleX;
+
       render();
       constrainTextToSafeZone(true);
       return;
@@ -1199,12 +1260,12 @@
       let box = textVisualBox();
       if (!box) return;
 
-      const maxW = SAFE.width - 3;
-      const maxH = SAFE.height - 3;
+      const maxW = SAFE.width - 0.4;
+      const maxH = SAFE.height - 0.4;
 
       if (box.width > maxW || box.height > maxH) {
         const factor = Math.min(maxW / box.width, maxH / box.height);
-        state.fontSize = clamp(state.fontSize * factor, 18, 180);
+        state.fontSize = clamp(state.fontSize * factor, 18, 280);
       }
 
       render();
@@ -1221,15 +1282,26 @@
       let box = textVisualBox();
       if (!box) return;
 
-      if (
-        allowShrink &&
-        (box.width > SAFE.width - 2 || box.height > SAFE.height - 2)
-      ) {
-        const factor = Math.min(
-          (SAFE.width - 2) / box.width,
-          (SAFE.height - 2) / box.height
+      const maxW = SAFE.width - 0.4;
+      const maxH = SAFE.height - 0.4;
+
+      if (allowShrink && box.width > maxW) {
+        state.textScaleX = clamp(
+          state.textScaleX * (maxW / box.width),
+          .4,
+          3
         );
-        state.fontSize = clamp(state.fontSize * factor, 18, 180);
+        render();
+        box = textVisualBox();
+        if (!box) return;
+      }
+
+      if (allowShrink && box.height > maxH) {
+        state.fontSize = clamp(
+          state.fontSize * (maxH / box.height),
+          18,
+          280
+        );
         render();
         box = textVisualBox();
         if (!box) return;
