@@ -138,9 +138,8 @@
               <span>Tervazonosító</span>
               <strong id="designId">—</strong>
             </div>
-            <button id="downloadZip" class="primary full" type="button">Teljes terv letöltése ZIP-ben</button>
-            <button id="returnButton" class="secondary full hidden" type="button">Tovább a webshophoz</button>
-            <p class="hint">A ZIP tartalmazza a gyártási SVG-t, az előnézeti PNG-t és a rendelési adatokat JSON-ban.</p>
+            <button id="downloadZip" class="primary full" type="button">Terv mentése és küldése →</button>
+            <p class="hint">A terv ZIP-fájlja és az előnézeti kép automatikusan elküldésre kerül, majd tovább tudsz lépni a rendeléshez.</p>
             <div id="status" class="status" aria-live="polite">A terv szerkeszthető. A biztonsági zónából kilógó szöveget a program automatikusan visszafogja.</div>
           </div>
         </section>
@@ -191,6 +190,36 @@
         </div>
       </section>
     </main>
+  </div>
+
+
+  <div id="sendModal" class="send-modal" hidden>
+    <div class="send-modal-backdrop" data-close-send></div>
+    <div class="send-modal-card" role="dialog" aria-modal="true" aria-labelledby="sendModalTitle">
+      <button type="button" class="send-modal-close" data-close-send aria-label="Bezárás">×</button>
+
+      <div id="sendFormView">
+        <div class="send-modal-eyebrow">TERV MENTÉSE</div>
+        <h2 id="sendModalTitle">Terv mentése folyamatban…</h2>
+        <p class="send-modal-intro">A ZIP-fájl és az előnézeti kép elküldése folyamatban van.</p>
+        <div class="design-id-box">
+          <span>Tervazonosító</span>
+          <strong id="designIdPreview">—</strong>
+        </div>
+        <div id="sendError" class="send-error" aria-live="polite"></div>
+      </div>
+
+      <div id="sendSuccessView" class="send-success" hidden>
+        <div class="send-success-icon">✓</div>
+        <h2>Terved sikeresen elmentve.</h2>
+        <p>A tervazonosító és a választott beállítások automatikusan bekerülnek a webshopos rendeléshez.</p>
+        <div class="design-id-box success-id">
+          <span>Tervazonosító</span>
+          <strong id="successDesignId">—</strong>
+        </div>
+        <button type="button" id="returnToShop" class="primary full-button">Tovább a rendeléshez →</button>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
