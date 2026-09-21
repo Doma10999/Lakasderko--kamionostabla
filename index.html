@@ -17,7 +17,7 @@
       <div class="eyebrow">EGYEDI KAMIONOS LED TÁBLA TERVEZŐ</div>
       <h1>Tervezd meg a saját <em>LED tábládat.</em></h1>
     </div>
-    <p class="intro">49 × 12 cm-es kamionos LED tábla élő előnézettel. Írd be a feliratot, válaszd ki a gravírozást és a LED színét, majd mentsd el a terved.</p>
+    <p class="intro">49 × 12 cm-es kamionos LED tábla élő előnézettel. Írd be a feliratot, válaszd ki a gravírozást, az ahhoz tartozó mintát és a LED színét, majd mentsd el a terved.</p>
   </header>
 
   <main class="workspace">
@@ -31,7 +31,7 @@
           <label>Betűtípus
             <select id="fontSelect"></select>
           </label>
-          <div class="hint" id="fontHint">Az Arial betűtípusok gyártási SVG-ben görbévé alakíthatók. A két BT betűtípushoz a pontos fontfájl külön hozzáadható.</div>
+          <div class="hint" id="fontHint">A feltöltött Bahnschrift és Bebas Neue betűtípusok a gyártási SVG-ben görbévé alakulnak, így a végleges terv nem függ a vásárló gépén lévő betűkészletektől.</div>
         </div>
       </section>
 
@@ -47,7 +47,18 @@
       </section>
 
       <section class="card open">
-        <button class="section-title" type="button" data-section-toggle><span>03</span> LED SZÍN <b>⌄</b></button>
+        <button class="section-title" type="button" data-section-toggle><span>03</span> MINTA <b>⌄</b></button>
+        <div class="section-body">
+          <div id="patternGrid" class="pattern-grid" role="radiogroup" aria-label="Minta választása"></div>
+          <div class="summary-grid single-summary">
+            <div><span>Kiválasztott minta</span><strong id="selectedPatternLabel">Nincs minta</strong></div>
+          </div>
+          <div class="hint compact">A minták automatikusan a kiválasztott gravírozáshoz igazodnak: kontúr módban csak a kontúr, telibe módban csak a telibe gravírozott minták jelennek meg.</div>
+        </div>
+      </section>
+
+      <section class="card open">
+        <button class="section-title" type="button" data-section-toggle><span>04</span> LED SZÍN <b>⌄</b></button>
         <div class="section-body">
           <div id="colorGrid" class="color-grid" role="radiogroup" aria-label="LED szín"></div>
           <div class="summary-grid">
@@ -59,7 +70,7 @@
       </section>
 
       <section class="card open selected-card">
-        <button class="section-title" type="button" data-section-toggle><span>04</span> ELRENDEZÉS <b>⌄</b></button>
+        <button class="section-title" type="button" data-section-toggle><span>05</span> ELRENDEZÉS <b>⌄</b></button>
         <div class="section-body">
           <label>Betűméret <span id="sizeOutput">68 mm</span>
             <input id="sizeRange" type="range" min="34" max="92" value="68" step="1" />
@@ -78,7 +89,7 @@
       </section>
 
       <section class="card open">
-        <button class="section-title" type="button" data-section-toggle><span>05</span> GYÁRTÁSI TERÜLET <b>⌄</b></button>
+        <button class="section-title" type="button" data-section-toggle><span>06</span> GYÁRTÁSI TERÜLET <b>⌄</b></button>
         <div class="section-body">
           <div class="summary-grid production-grid">
             <div><span>Tábla</span><strong>490 × 120 mm</strong></div>
@@ -94,7 +105,7 @@
       </section>
 
       <section class="card open">
-        <button class="section-title" type="button" data-section-toggle><span>06</span> TERV MENTÉSE <b>⌄</b></button>
+        <button class="section-title" type="button" data-section-toggle><span>07</span> TERV MENTÉSE <b>⌄</b></button>
         <div class="section-body">
           <div class="design-id-box">
             <span>Tervazonosító</span>
@@ -129,6 +140,7 @@
           <rect class="board-bg" x="0" y="0" width="490" height="120" rx="2"/>
           <rect class="board-edge" x="2" y="2" width="486" height="116" rx="2"/>
           <rect id="safeZone" class="safe-zone" x="50" y="14" width="390" height="101" rx="1"/>
+          <g id="patternLayer" aria-hidden="true"></g>
           <text id="previewText" x="245" y="75" text-anchor="middle">PETI</text>
         </svg>
         <div class="viewer-note">A felirat automatikusan a megadott gyártási területen belül marad.</div>

@@ -1,3 +1,17 @@
+@font-face{
+  font-family:"LakDekorBahnschrift";
+  src:url("./Bet%C5%B1t%C3%ADpus/BAHNSCHRIFT.TTF") format("truetype");
+  font-style:normal;
+  font-weight:100 900;
+  font-display:swap;
+}
+@font-face{
+  font-family:"LakDekorBebasNeue";
+  src:url("./Bet%C5%B1t%C3%ADpus/BEBASNEUE-REGULAR.TTF") format("truetype");
+  font-style:normal;
+  font-weight:400;
+  font-display:swap;
+}
 :root{
   --bg:#fbfaf8;--panel:#fff;--ink:#35261e;--muted:#8c837d;--line:#e6e0db;
   --accent:#f3e6d8;--dark:#22201f;--danger:#a63232;--brand:#d47a24
@@ -47,6 +61,22 @@ input[type=range]{width:100%;accent-color:#27221f}
 .segmented{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
 .segmented button{border:1px solid #d9d0ca;border-radius:12px;background:#fff;min-height:43px;padding:9px 10px;font-weight:800;color:#443934}
 .segmented button.active{background:#231f1d;color:#fff;border-color:#231f1d}
+
+.pattern-grid{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px;
+  max-height:300px;overflow:auto;padding:2px;scrollbar-width:thin
+}
+.pattern-choice{
+  position:relative;min-height:96px;border:1px solid #ddd4ce;border-radius:12px;background:#fff;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:8px;
+  color:#4b403a;transition:.15s
+}
+.pattern-choice:hover{border-color:#b79d8c;transform:translateY(-1px)}
+.pattern-choice.active{border:2px solid #231f1d;background:#faf7f4}
+.pattern-choice img{display:block;width:100%;height:56px;object-fit:contain}
+.pattern-choice span{font-size:10px;font-weight:800;line-height:1.15;text-align:center}
+.pattern-empty{min-height:56px;display:grid;place-items:center;color:#94877f}
+.single-summary{grid-template-columns:1fr}
 
 .color-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:12px}
 .color-choice{
@@ -207,6 +237,19 @@ input[type=range]{width:100%;accent-color:#27221f}
     grid-template-columns:repeat(3,minmax(0,1fr));
   }
 
+  .pattern-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    max-height:260px;
+  }
+
+  .pattern-choice{
+    min-height:88px;
+  }
+
+  .pattern-choice img{
+    height:50px;
+  }
+
   .color-choice{
     min-height:68px;
   }
@@ -262,6 +305,11 @@ input[type=range]{width:100%;accent-color:#27221f}
 
   .color-grid{
     grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:6px;
+  }
+
+  .pattern-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
     gap:6px;
   }
 

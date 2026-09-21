@@ -28,22 +28,80 @@
     { id: 'rgb', label: 'RGB', value: 'url(#rgbGradient)', css: 'rgb', price: PRICES.rgb }
   ];
 
-  const RAW_FONT_BASE = 'https://raw.githubusercontent.com/Doma10999/Lakasdekor-egyedi-fejleszt-s/main/Bet%C5%B1t%C3%ADpus/';
+  const FONT_BASE = './Bet%C5%B1t%C3%ADpus/';
   const FONTS = [
-    { id: 'arial-bold', label: 'Arial félkövér', family: 'Arial, Helvetica, sans-serif', weight: 700, url: RAW_FONT_BASE + 'arial_felkover.otf' },
-    { id: 'arial-black', label: 'Arial Black BT', family: 'Arial Black, Arial, sans-serif', weight: 900, url: RAW_FONT_BASE + 'arial_black.otf' },
-    { id: 'bevasarlas-bt', label: 'Bevásárlás BT', family: 'Georgia, Times New Roman, serif', weight: 700, url: null, placeholder: true },
-    { id: 'bunshif-bt', label: 'Bunshif Konzolt BT', family: 'Trebuchet MS, Arial, sans-serif', weight: 800, url: null, placeholder: true }
+    {
+      id: 'bahnschrift',
+      label: 'Bahnschrift',
+      family: 'LakDekorBahnschrift, Bahnschrift, Arial, sans-serif',
+      weight: 700,
+      url: FONT_BASE + 'BAHNSCHRIFT.TTF'
+    },
+    {
+      id: 'bebas-neue',
+      label: 'Bebas Neue',
+      family: 'LakDekorBebasNeue, "Bebas Neue", Arial, sans-serif',
+      weight: 400,
+      url: FONT_BASE + 'BEBASNEUE-REGULAR.TTF'
+    }
   ];
+
+  const PATTERN_BOX = { x: 54, y: 18, width: 82, height: 92 };
+
+  const OUTLINE_PATTERNS = [
+    { id:'csillagok', label:'Csillagok', file:'csillagok.svg' },
+    { id:'daf', label:'DAF', file:'daf.svg' },
+    { id:'h-jelzes', label:'H-jelzés', file:'h-jelzés.svg' },
+    { id:'hal', label:'Hal', file:'hal.svg' },
+    { id:'iveco', label:'Iveco', file:'iveco.svg' },
+    { id:'john-deere', label:'John Deere', file:'john deree.svg' },
+    { id:'kalasz', label:'Kalász', file:'kalász.svg' },
+    { id:'kamion', label:'Kamion', file:'kamion.svg' },
+    { id:'kombajn', label:'Kombájn', file:'kombájn.svg' },
+    { id:'man', label:'MAN', file:'man.svg' },
+    { id:'mercedes', label:'Mercedes', file:'mercedes.svg' },
+    { id:'mtz', label:'MTZ', file:'mtz.svg' },
+    { id:'new-holland', label:'New Holland', file:'new holland.svg' },
+    { id:'renault', label:'Renault', file:'renault.svg' },
+    { id:'scania', label:'Scania', file:'scania.svg' },
+    { id:'traktor', label:'Traktor', file:'traktor.svg' },
+    { id:'volvo', label:'Volvo', file:'volvo.svg' },
+    { id:'vontato', label:'Vontató', file:'vontató.svg' }
+  ].map(p => ({ ...p, folder:'kontúr gravírozás', mode:'outline' }));
+
+  const FILL_PATTERNS = [
+    { id:'daf', label:'DAF', file:'DAF.svg' },
+    { id:'h-jelzes', label:'H-jelzés', file:'H-jelzés.svg' },
+    { id:'csillagok', label:'Csillagok', file:'csillagok.svg' },
+    { id:'hal', label:'Hal', file:'hal.svg' },
+    { id:'iveco', label:'Iveco', file:'iveco.svg' },
+    { id:'john-deere', label:'John Deere', file:'john deree.svg' },
+    { id:'kalasz', label:'Kalász', file:'kalász.svg' },
+    { id:'kamion', label:'Kamion', file:'kamion.svg' },
+    { id:'man', label:'MAN', file:'man.svg' },
+    { id:'mercedes', label:'Mercedes', file:'mercedes.svg' },
+    { id:'mtz', label:'MTZ', file:'mtz.svg' },
+    { id:'new-holland', label:'New Holland', file:'new holland.svg' },
+    { id:'renault', label:'Renault', file:'renault.svg' },
+    { id:'scania', label:'Scania', file:'scania.svg' },
+    { id:'traktor', label:'Traktor', file:'traktor.svg' },
+    { id:'volvo', label:'Volvo', file:'volvo.svg' },
+    { id:'vontato', label:'Vontató', file:'vontató.svg' }
+  ].map(p => ({ ...p, folder:'telibe gravírozott', mode:'fill' }));
 
   const $ = sel => document.querySelector(sel);
   const $$ = sel => [...document.querySelectorAll(sel)];
   const fontCache = new Map();
+  const patternSvgCache = new Map();
+  let patternRenderToken = 0;
 
   const els = {
     textInput: $('#textInput'),
     fontSelect: $('#fontSelect'),
     engravingControl: $('#engravingControl'),
+    patternGrid: $('#patternGrid'),
+    selectedPatternLabel: $('#selectedPatternLabel'),
+    patternLayer: $('#patternLayer'),
     colorGrid: $('#colorGrid'),
     selectedColorLabel: $('#selectedColorLabel'),
     selectedPrice: $('#selectedPrice'),
@@ -77,8 +135,9 @@
 
   const state = {
     text: cleanText(params.get('nev')) || 'PETI',
-    fontId: FONTS.some(f => f.id === params.get('font')) ? params.get('font') : 'arial-bold',
+    fontId: FONTS.some(f => f.id === params.get('font')) ? params.get('font') : 'bahnschrift',
     engraving: params.get('grav') === 'fill' ? 'fill' : 'outline',
+    patternId: String(params.get('minta') || params.get('pattern') || params.get('kamionminta') || '').trim(),
     led: LED_COLORS.some(c => c.id === params.get('led')) ? params.get('led') : 'blue',
     fontSize: clamp(Number(params.get('meret') || 68), 34, 92),
     xPct: clamp(Number(params.get('x') || 50), 0, 100),
@@ -133,6 +192,7 @@
       text: state.text,
       fontId: state.fontId,
       engraving: state.engraving,
+      patternId: state.patternId,
       led: state.led,
       fontSize: state.fontSize,
       xPct: state.xPct,
@@ -193,8 +253,12 @@
 
     state.id = designId;
     state.text = cleanText(snap.text) || 'PETI';
-    state.fontId = FONTS.some(f => f.id === snap.fontId) ? snap.fontId : 'arial-bold';
+    state.fontId = FONTS.some(f => f.id === snap.fontId) ? snap.fontId : 'bahnschrift';
     state.engraving = snap.engraving === 'fill' ? 'fill' : 'outline';
+    state.patternId = String(snap.patternId || '').trim();
+    if (!patternsForEngraving(state.engraving).some(p => p.id === state.patternId)) {
+      state.patternId = '';
+    }
     state.led = LED_COLORS.some(c => c.id === snap.led) ? snap.led : 'blue';
     state.fontSize = clamp(snap.fontSize, 34, 92);
     state.xPct = clamp(snap.xPct, 0, 100);
@@ -230,11 +294,61 @@
     return LED_COLORS.find(c => c.id === state.led) || LED_COLORS[0];
   }
 
-  function targetCenter() {
+  function patternsForEngraving(mode = state.engraving) {
+    return mode === 'fill' ? FILL_PATTERNS : OUTLINE_PATTERNS;
+  }
+
+  function selectedPattern() {
+    return patternsForEngraving().find(p => p.id === state.patternId) || null;
+  }
+
+  function patternUrl(def) {
+    if (!def) return '';
+    return encodeURI('./' + def.folder + '/' + def.file);
+  }
+
+  function textSafeArea() {
+    if (!selectedPattern()) return SAFE;
+    const x = 150;
     return {
-      x: SAFE.x + SAFE.width * state.xPct / 100,
-      y: SAFE.y + SAFE.height * state.yPct / 100
+      x,
+      y: SAFE.y,
+      width: SAFE.x + SAFE.width - x,
+      height: SAFE.height
     };
+  }
+
+  function targetCenter() {
+    const area = textSafeArea();
+    return {
+      x: area.x + area.width * state.xPct / 100,
+      y: area.y + area.height * state.yPct / 100
+    };
+  }
+
+  function renderPatternChoices() {
+    if (!els.patternGrid) return;
+
+    const patterns = patternsForEngraving();
+    if (!patterns.some(p => p.id === state.patternId)) {
+      state.patternId = '';
+    }
+
+    const emptyButton =
+      '<button type="button" class="pattern-choice' + (!state.patternId ? ' active' : '') +
+      '" data-pattern="" aria-label="Nincs minta"><span class="pattern-empty">Nincs minta</span></button>';
+
+    const buttons = patterns.map(p =>
+      '<button type="button" class="pattern-choice' + (p.id === state.patternId ? ' active' : '') +
+      '" data-pattern="' + p.id + '" aria-label="' + p.label + '">' +
+      '<img src="' + patternUrl(p) + '" alt="" loading="lazy" />' +
+      '<span>' + p.label + '</span></button>'
+    ).join('');
+
+    els.patternGrid.innerHTML = emptyButton + buttons;
+    if (els.selectedPatternLabel) {
+      els.selectedPatternLabel.textContent = selectedPattern()?.label || 'Nincs minta';
+    }
   }
 
   function previewBaseline() {
@@ -252,6 +366,7 @@
       '<option value="' + f.id + '">' + f.label + (f.placeholder ? ' (fontfájl szükséges)' : '') + '</option>'
     ).join('');
     els.fontSelect.value = state.fontId;
+    renderPatternChoices();
 
     els.colorGrid.innerHTML = LED_COLORS.map(c =>
       '<button type="button" class="color-choice" data-color="' + c.id + '" style="--swatch:' + c.css + '" aria-label="' + c.label + '" role="radio"><span>' + c.label + '</span></button>'
@@ -282,8 +397,26 @@
     els.engravingControl.addEventListener('click', e => {
       const button = e.target.closest('[data-engraving]');
       if (!button) return;
+
+      const previousPatternId = state.patternId;
       state.engraving = button.dataset.engraving;
+
+      state.patternId = patternsForEngraving().some(p => p.id === previousPatternId)
+        ? previousPatternId
+        : '';
+
+      renderPatternChoices();
       render();
+      autoFit(false);
+    });
+
+    els.patternGrid?.addEventListener('click', e => {
+      const button = e.target.closest('[data-pattern]');
+      if (!button) return;
+      state.patternId = button.dataset.pattern || '';
+      renderPatternChoices();
+      render();
+      autoFit(false);
     });
 
     els.colorGrid.addEventListener('click', e => {
@@ -329,6 +462,90 @@
     render();
   }
 
+  async function loadPatternSvg(def) {
+    if (!def) return null;
+    const key = def.mode + ':' + def.file;
+    if (patternSvgCache.has(key)) return patternSvgCache.get(key);
+
+    const promise = fetch(patternUrl(def), { cache:'force-cache' })
+      .then(response => {
+        if (!response.ok) throw new Error('A minta nem tölthető be: ' + def.label);
+        return response.text();
+      })
+      .catch(error => {
+        patternSvgCache.delete(key);
+        throw error;
+      });
+
+    patternSvgCache.set(key, promise);
+    return promise;
+  }
+
+  function recolorSvgNode(root, paint) {
+    root.querySelectorAll('*').forEach(node => {
+      const fill = node.getAttribute('fill');
+      const stroke = node.getAttribute('stroke');
+
+      if (fill && fill.toLowerCase() !== 'none') node.setAttribute('fill', paint);
+      if (stroke && stroke.toLowerCase() !== 'none') node.setAttribute('stroke', paint);
+
+      const style = node.getAttribute('style');
+      if (style) {
+        node.setAttribute(
+          'style',
+          style
+            .replace(/fill\s*:\s*(?:red|#ff0000|#f00)/gi, 'fill:' + paint)
+            .replace(/stroke\s*:\s*(?:red|#ff0000|#f00)/gi, 'stroke:' + paint)
+        );
+      }
+    });
+  }
+
+  async function updatePatternPreview(paint) {
+    if (!els.patternLayer) return;
+
+    const token = ++patternRenderToken;
+    els.patternLayer.replaceChildren();
+
+    const def = selectedPattern();
+    if (!def) return;
+
+    try {
+      const raw = await loadPatternSvg(def);
+      if (token !== patternRenderToken || !raw) return;
+
+      const parsed = new DOMParser().parseFromString(raw, 'image/svg+xml');
+      const source = parsed.documentElement;
+      if (!source || source.nodeName.toLowerCase() !== 'svg') return;
+
+      const NS = 'http://www.w3.org/2000/svg';
+      const nested = document.createElementNS(NS, 'svg');
+      nested.setAttribute('x', String(PATTERN_BOX.x));
+      nested.setAttribute('y', String(PATTERN_BOX.y));
+      nested.setAttribute('width', String(PATTERN_BOX.width));
+      nested.setAttribute('height', String(PATTERN_BOX.height));
+      nested.setAttribute('viewBox', source.getAttribute('viewBox') || '0 0 100 100');
+      nested.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      nested.setAttribute('overflow', 'visible');
+      nested.setAttribute('pointer-events', 'none');
+      nested.setAttribute('filter', 'url(#glow)');
+      nested.dataset.patternId = def.id;
+
+      Array.from(source.childNodes).forEach(node => {
+        nested.appendChild(document.importNode(node, true));
+      });
+
+      nested.querySelectorAll('metadata,script,foreignObject').forEach(node => node.remove());
+      recolorSvgNode(nested, paint);
+
+      if (token === patternRenderToken) {
+        els.patternLayer.appendChild(nested);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
   function render() {
     const font = selectedFont();
     const led = selectedLed();
@@ -342,6 +559,8 @@
     els.previewText.style.fontSize = state.fontSize + 'px';
 
     const paint = state.led === 'rgb' ? 'url(#rgbGradient)' : led.value;
+    updatePatternPreview(paint);
+
     if (state.engraving === 'outline') {
       els.previewText.setAttribute('fill', 'transparent');
       els.previewText.setAttribute('stroke', paint);
@@ -364,11 +583,19 @@
     $$('#engravingControl [data-engraving]').forEach(btn =>
       btn.classList.toggle('active', btn.dataset.engraving === state.engraving)
     );
-    $$('#colorGrid [data-color]').forEach(btn => {
+    $('#colorGrid [data-color]').forEach(btn => {
       const active = btn.dataset.color === state.led;
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-checked', active ? 'true' : 'false');
     });
+
+    $('#patternGrid [data-pattern]').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.pattern || '') === state.patternId);
+    });
+
+    if (els.selectedPatternLabel) {
+      els.selectedPatternLabel.textContent = selectedPattern()?.label || 'Nincs minta';
+    }
 
     els.selectedColorLabel.textContent = led.label;
     els.selectedPrice.textContent = formatHuf(led.price);
@@ -526,16 +753,18 @@
       const dx = p.x - directEditInteraction.startPoint.x;
       const dy = p.y - directEditInteraction.startPoint.y;
 
+      const area = textSafeArea();
+
       state.xPct = clamp(
         directEditInteraction.startXPct +
-          dx / SAFE.width * 100,
+          dx / area.width * 100,
         0,
         100
       );
 
       state.yPct = clamp(
         directEditInteraction.startYPct +
-          dy / SAFE.height * 100,
+          dy / area.height * 100,
         0,
         100
       );
@@ -640,10 +869,11 @@
 
     requestAnimationFrame(() => {
       let attempts = 0;
+      const area = textSafeArea();
       while (attempts++ < 80) {
         const box = bbox();
         if (!box) break;
-        if (box.width <= SAFE.width - 4 && box.height <= SAFE.height - 4) break;
+        if (box.width <= area.width - 4 && box.height <= area.height - 4) break;
         state.fontSize = Math.max(34, state.fontSize - 1);
         els.previewText.style.fontSize = state.fontSize + 'px';
       }
@@ -657,30 +887,34 @@
     requestAnimationFrame(() => {
       const box = bbox();
       if (!box) return;
-      if (box.width > SAFE.width - 2 || box.height > SAFE.height - 2) {
+
+      const area = textSafeArea();
+
+      if (box.width > area.width - 2 || box.height > area.height - 2) {
         autoFit(false);
         return;
       }
 
       let dx = 0, dy = 0;
-      if (box.x < SAFE.x) dx = SAFE.x - box.x;
-      if (box.x + box.width > SAFE.x + SAFE.width) dx = SAFE.x + SAFE.width - (box.x + box.width);
-      if (box.y < SAFE.y) dy = SAFE.y - box.y;
-      if (box.y + box.height > SAFE.y + SAFE.height) dy = SAFE.y + SAFE.height - (box.y + box.height);
+      if (box.x < area.x) dx = area.x - box.x;
+      if (box.x + box.width > area.x + area.width) dx = area.x + area.width - (box.x + box.width);
+      if (box.y < area.y) dy = area.y - box.y;
+      if (box.y + box.height > area.y + area.height) dy = area.y + area.height - (box.y + box.height);
 
-      if (Math.abs(dx) > 0.1) state.xPct = clamp(state.xPct + dx / SAFE.width * 100, 0, 100);
-      if (Math.abs(dy) > 0.1) state.yPct = clamp(state.yPct + dy / SAFE.height * 100, 0, 100);
+      if (Math.abs(dx) > 0.1) state.xPct = clamp(state.xPct + dx / area.width * 100, 0, 100);
+      if (Math.abs(dy) > 0.1) state.yPct = clamp(state.yPct + dy / area.height * 100, 0, 100);
       if (dx || dy) render();
     });
   }
 
   function reset() {
     Object.assign(state, {
-      text:'PETI', fontId:'arial-bold', engraving:'outline', led:'blue',
+      text:'PETI', fontId:'bahnschrift', engraving:'outline', patternId:'', led:'blue',
       fontSize:68, xPct:50, yPct:50, showSafe:true
     });
     els.textInput.value = state.text;
     els.fontSelect.value = state.fontId;
+    renderPatternChoices();
     els.safeZoneToggle.checked = true;
     render();
     autoFit(false);
@@ -724,12 +958,36 @@
       path.toPathData(3) + '" ' + paintAttrs + '/></g>';
   }
 
+  async function productionPatternMarkup() {
+    const def = selectedPattern();
+    if (!def) return '';
+
+    const raw = await loadPatternSvg(def);
+    const parsed = new DOMParser().parseFromString(raw, 'image/svg+xml');
+    const source = parsed.documentElement;
+
+    if (!source || source.nodeName.toLowerCase() !== 'svg') {
+      throw new Error('A kiválasztott minta SVG-je hibás: ' + def.label);
+    }
+
+    source.querySelectorAll('metadata,script,foreignObject').forEach(node => node.remove());
+    recolorSvgNode(source, '#000000');
+
+    const viewBox = source.getAttribute('viewBox') || '0 0 100 100';
+    const inner = Array.from(source.childNodes)
+      .map(node => new XMLSerializer().serializeToString(node))
+      .join('');
+
+    return '<svg x="' + PATTERN_BOX.x + '" y="' + PATTERN_BOX.y +
+      '" width="' + PATTERN_BOX.width + '" height="' + PATTERN_BOX.height +
+      '" viewBox="' + escapeXml(viewBox) +
+      '" preserveAspectRatio="xMidYMid meet" overflow="visible" data-role="minta" data-pattern="' +
+      escapeXml(def.label) + '">' + inner + '</svg>';
+  }
+
   async function serializeProductionSvg() {
     const textMarkup = await productionTextMarkup();
-    const font = selectedFont();
-    const fallbackNote = font.placeholder
-      ? '\n  <!-- FIGYELEM: ehhez a BT betűtípushoz a pontos fontfájl nincs a projektben; ellenőrizd gyártás előtt. -->'
-      : '';
+    const patternMarkup = await productionPatternMarkup();
 
     return '<?xml version="1.0" encoding="UTF-8"?>\n' +
       '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n' +
@@ -740,6 +998,7 @@
       '  <!-- Tervazonosító: ' + escapeXml(state.id) + ' -->\n' +
       '  <!-- Gyártási terület: bal/jobb 50 mm, felül 14 mm, alul 5 mm -->' + fallbackNote + '\n' +
       '  <rect x="0.2" y="0.2" width="489.6" height="119.6" fill="none" stroke="#000000" stroke-width="0.4" data-role="tabla-kontur"/>\n' +
+      (patternMarkup ? '  ' + patternMarkup + '\n' : '') +
       '  ' + textMarkup + '\n' +
       '</svg>';
   }
@@ -808,6 +1067,7 @@
       'Méret: 49 × 12 cm (490 × 120 mm)',
       'Betűtípus: ' + selectedFont().label,
       'Gravírozás: ' + (state.engraving === 'outline' ? 'Kontúr gravírozás' : 'Telibe gravírozott'),
+      'Minta: ' + (selectedPattern()?.label || 'Nincs minta'),
       'LED szín: ' + selectedLed().label,
       'Ár: ' + formatHuf(selectedLed().price),
       'Gyártási margók: bal 50 mm, jobb 50 mm, felül 14 mm, alul 5 mm'
@@ -896,6 +1156,7 @@
       fd.append('felirat', state.text || '—');
       fd.append('betutipus', selectedFont().label);
       fd.append('gravirozas', state.engraving === 'outline' ? 'Kontúr gravírozás' : 'Telibe gravírozott');
+      fd.append('minta', selectedPattern()?.label || 'Nincs minta');
       fd.append('led_szin', selectedLed().label);
       fd.append('meret', '49 × 12 cm');
       fd.append('ar', formatHuf(selectedLed().price));
@@ -951,6 +1212,7 @@
     url.searchParams.set('kamionnev', state.text);
     url.searchParams.set('kamionfont', state.fontId);
     url.searchParams.set('kamiongrav', state.engraving);
+    url.searchParams.set('kamionminta', state.patternId || '');
     url.searchParams.set('kamionled', state.led);
     url.searchParams.set('kamionar', String(selectedLed().price));
     navigateBackToShop(url.toString());
