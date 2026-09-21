@@ -949,73 +949,6 @@
   }
 
   function currentSelectionBox() {
-    /*
-      Külön vízszintes széthúzó/keskenyítő fogó.
-      A sarokfogók továbbra is méretarányosan működnek.
-      Ez a ↔ fogó csak a szélességet módosítja, maximum a
-      fehér szaggatott Biztonsági zónáig.
-    */
-    {
-      const stretchX = x + w;
-      const stretchY = y + h / 2;
-
-      const stretchGroup = document.createElementNS(NS, 'g');
-      stretchGroup.setAttribute('class', 'object-stretch-control');
-      stretchGroup.setAttribute(
-        'transform',
-        'translate(' + stretchX.toFixed(2) + ' ' + stretchY.toFixed(2) + ')'
-      );
-      stretchGroup.setAttribute('role', 'button');
-      stretchGroup.setAttribute('aria-label', 'Széthúzás vagy keskenyítés');
-
-      const stretchCircle = document.createElementNS(NS, 'circle');
-      stretchCircle.setAttribute('r', '7.2');
-      stretchCircle.setAttribute('class', 'object-stretch-circle');
-      stretchGroup.appendChild(stretchCircle);
-
-      const stretchText = document.createElementNS(NS, 'text');
-      stretchText.setAttribute('class', 'object-stretch-icon');
-      stretchText.setAttribute('x', '0');
-      stretchText.setAttribute('y', '0.8');
-      stretchText.setAttribute('text-anchor', 'middle');
-      stretchText.setAttribute('dominant-baseline', 'middle');
-      stretchText.textContent = '↔';
-      stretchGroup.appendChild(stretchText);
-
-      stretchGroup.addEventListener('pointerdown', evt => {
-        evt.preventDefault();
-        evt.stopPropagation();
-
-        const selection = currentSelectionBox();
-        if (!selection) return;
-
-        if (selectedObject.type === 'pattern') {
-          const inst = selectedPatternInstance();
-          if (!inst) return;
-
-          directEditInteraction = {
-            mode:'pattern-stretch',
-            pointerId:evt.pointerId,
-            patternId:inst.id,
-            anchorX:selection.x,
-            startW:Math.max(1, selection.width)
-          };
-        } else {
-          directEditInteraction = {
-            mode:'text-stretch',
-            pointerId:evt.pointerId,
-            anchorX:selection.x,
-            startScaleX:state.textScaleX,
-            startW:Math.max(1, selection.width)
-          };
-        }
-
-        try { els.designSvg.setPointerCapture(evt.pointerId); } catch (_) {}
-      });
-
-      els.selectionLayer.appendChild(stretchGroup);
-    }
-
     if (selectedObject.type === 'pattern') {
       const inst = selectedPatternInstance();
       return inst ? { x:inst.x, y:inst.y, width:inst.w, height:inst.h } : null;
@@ -1134,6 +1067,73 @@
 
       els.selectionLayer.appendChild(handle);
     });
+
+    /*
+      Jobb oldali ↔ fogó:
+      - a sarkok továbbra is arányosan méreteznek
+      - ez csak vízszintesen nyújt/keskenyít
+      - maximum a fehér Biztonsági zóna jobb széléig
+    */
+    {
+      const stretchX = x + w;
+      const stretchY = y + h / 2;
+
+      const stretchGroup = document.createElementNS(NS, 'g');
+      stretchGroup.setAttribute('class', 'object-stretch-control');
+      stretchGroup.setAttribute(
+        'transform',
+        'translate(' + stretchX.toFixed(2) + ' ' + stretchY.toFixed(2) + ')'
+      );
+      stretchGroup.setAttribute('role', 'button');
+      stretchGroup.setAttribute('aria-label', 'Széthúzás vagy keskenyítés');
+
+      const stretchCircle = document.createElementNS(NS, 'circle');
+      stretchCircle.setAttribute('r', '7.2');
+      stretchCircle.setAttribute('class', 'object-stretch-circle');
+      stretchGroup.appendChild(stretchCircle);
+
+      const stretchText = document.createElementNS(NS, 'text');
+      stretchText.setAttribute('class', 'object-stretch-icon');
+      stretchText.setAttribute('x', '0');
+      stretchText.setAttribute('y', '0.8');
+      stretchText.setAttribute('text-anchor', 'middle');
+      stretchText.setAttribute('dominant-baseline', 'middle');
+      stretchText.textContent = '↔';
+      stretchGroup.appendChild(stretchText);
+
+      stretchGroup.addEventListener('pointerdown', evt => {
+        evt.preventDefault();
+        evt.stopPropagation();
+
+        const selection = currentSelectionBox();
+        if (!selection) return;
+
+        if (selectedObject.type === 'pattern') {
+          const inst = selectedPatternInstance();
+          if (!inst) return;
+
+          directEditInteraction = {
+            mode:'pattern-stretch',
+            pointerId:evt.pointerId,
+            patternId:inst.id,
+            anchorX:selection.x,
+            startW:Math.max(1, selection.width)
+          };
+        } else {
+          directEditInteraction = {
+            mode:'text-stretch',
+            pointerId:evt.pointerId,
+            anchorX:selection.x,
+            startScaleX:state.textScaleX,
+            startW:Math.max(1, selection.width)
+          };
+        }
+
+        try { els.designSvg.setPointerCapture(evt.pointerId); } catch (_) {}
+      });
+
+      els.selectionLayer.appendChild(stretchGroup);
+    }
 
     if (selectedObject.type === 'pattern') {
       const inst = selectedPatternInstance();
