@@ -1,15 +1,7 @@
 (() => {
   'use strict';
 
-  const MM = {
-    boardW: 490,
-    boardH: 120,
-    left: 50,
-    right: 50,
-    top: 14,
-    bottom: 5
-  };
-
+  const MM = { boardW: 490, boardH: 120, left: 50, right: 50, top: 14, bottom: 5 };
   const SAFE = {
     x: MM.left,
     y: MM.top,
@@ -17,10 +9,10 @@
     height: MM.boardH - MM.top - MM.bottom
   };
 
-  const PRICES = {
-    standard: 8500,
-    rgb: 11150
-  };
+  const PRICES = { standard: 8500, rgb: 11150 };
+  const FORMSUBMIT_ENDPOINT = 'https://formsubmit.co/tervezo@falmatrica-lakasdekor.hu';
+  const params = new URLSearchParams(location.search);
+  const returnUrl = params.get('return') || 'https://falmatrica-lakasdekor.hu/Tervezd-meg-sajatodat';
 
   const LED_COLORS = [
     { id: 'blue', label: 'Kék', value: '#2f55ff', css: '#2f55ff', price: PRICES.standard },
@@ -30,15 +22,17 @@
     { id: 'rgb', label: 'RGB', value: 'url(#rgbGradient)', css: 'rgb', price: PRICES.rgb }
   ];
 
+  const RAW_FONT_BASE = 'https://raw.githubusercontent.com/Doma10999/Lakasdekor-egyedi-fejleszt-s/main/Bet%C5%B1t%C3%ADpus/';
   const FONTS = [
-    { id: 'arial-bold', label: 'Arial félkövér', family: 'Arial, Helvetica, sans-serif', weight: 700, placeholder: false },
-    { id: 'arial-black', label: 'Arial Black BT', family: 'Arial Black, Arial, sans-serif', weight: 900, placeholder: false },
-    { id: 'bevasarlas-bt', label: 'Bevásárlás BT', family: 'Georgia, Times New Roman, serif', weight: 700, placeholder: true },
-    { id: 'bunshif-bt', label: 'Bunshif Konzolt BT', family: 'Trebuchet MS, Arial, sans-serif', weight: 800, placeholder: true }
+    { id: 'arial-bold', label: 'Arial félkövér', family: 'Arial, Helvetica, sans-serif', weight: 700, url: RAW_FONT_BASE + 'arial_felkover.otf' },
+    { id: 'arial-black', label: 'Arial Black BT', family: 'Arial Black, Arial, sans-serif', weight: 900, url: RAW_FONT_BASE + 'arial_black.otf' },
+    { id: 'bevasarlas-bt', label: 'Bevásárlás BT', family: 'Georgia, Times New Roman, serif', weight: 700, url: null, placeholder: true },
+    { id: 'bunshif-bt', label: 'Bunshif Konzolt BT', family: 'Trebuchet MS, Arial, sans-serif', weight: 800, url: null, placeholder: true }
   ];
 
-  const $ = (sel) => document.querySelector(sel);
-  const $$ = (sel) => [...document.querySelectorAll(sel)];
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => [...document.querySelectorAll(sel)];
+  const fontCache = new Map();
 
   const els = {
     textInput: $('#textInput'),
@@ -47,7 +41,6 @@
     colorGrid: $('#colorGrid'),
     selectedColorLabel: $('#selectedColorLabel'),
     selectedPrice: $('#selectedPrice'),
-    headerPrice: $('#headerPrice'),
     sizeRange: $('#sizeRange'),
     xRange: $('#xRange'),
     yRange: $('#yRange'),
@@ -56,6 +49,7 @@
     yOutput: $('#yOutput'),
     fitButton: $('#fitButton'),
     centerButton: $('#centerButton'),
+    centerPreviewButton: $('#centerPreviewButton'),
     safeZoneToggle: $('#safeZoneToggle'),
     safeZone: $('#safeZone'),
     previewText: $('#previewText'),
@@ -67,18 +61,15 @@
     designId: $('#designId'),
     downloadZip: $('#downloadZip'),
     resetButton: $('#resetButton'),
-    status: $('#status')
+    status: $('#status'),
+    loading: $('#loading')
   };
-
-  const params = new URLSearchParams(location.search);
-  const returnUrl = params.get('return') || 'https://falmatrica-lakasdekor.hu/Tervezd-meg-sajatodat';
-  const FORMSUBMIT_ENDPOINT = 'https://formsubmit.co/tervezo@falmatrica-lakasdekor.hu';
 
   let sendInProgress = false;
 
   const state = {
-    text: params.get('nev') || 'PETI',
-    fontId: params.get('font') || 'arial-bold',
+    text: cleanText(params.get('nev')) || 'PETI',
+    fontId: FONTS.some(f => f.id === params.get('font')) ? params.get('font') : 'arial-bold',
     engraving: params.get('grav') === 'fill' ? 'fill' : 'outline',
     led: LED_COLORS.some(c => c.id === params.get('led')) ? params.get('led') : 'blue',
     fontSize: clamp(Number(params.get('meret') || 68), 34, 92),
@@ -89,7 +80,26 @@
   };
 
   function clamp(n, min, max) {
-    return Math.max(min, Math.min(max, Number.isFinite(n) ? n : min));
+    const v = Number(n);
+    return Math.max(min, Math.min(max, Number.isFinite(v) ? v : min));
+  }
+
+  function cleanText(value) {
+    return String(value || '').replace(/[<>]/g, '').trim().slice(0, 24);
+  }
+
+  function escapeXml(value) {
+    return String(value ?? '').replace(/[<>&"']/g, c => ({
+      '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&apos;'
+    }[c]));
+  }
+
+  function safeName(value) {
+    return String(value || 'terv')
+      .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9._-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 80) || 'terv';
   }
 
   function makeDesignId() {
@@ -97,8 +107,10 @@
     const yy = String(d.getFullYear()).slice(-2);
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
-    const rand = Math.random().toString(36).slice(2, 8).toUpperCase();
-    return `KL-${yy}${mm}${dd}-${rand}`;
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const bytes = new Uint8Array(6);
+    crypto.getRandomValues(bytes);
+    return 'KL-' + yy + mm + dd + '-' + [...bytes].map(b => chars[b % chars.length]).join('');
   }
 
   function formatHuf(value) {
@@ -113,18 +125,31 @@
     return LED_COLORS.find(c => c.id === state.led) || LED_COLORS[0];
   }
 
-  function safeText(value) {
-    return String(value || '').replace(/[<>]/g, '').trim().slice(0, 24);
+  function targetCenter() {
+    return {
+      x: SAFE.x + SAFE.width * state.xPct / 100,
+      y: SAFE.y + SAFE.height * state.yPct / 100
+    };
+  }
+
+  function previewBaseline() {
+    const p = targetCenter();
+    return { x: p.x, y: p.y + state.fontSize * 0.28 };
+  }
+
+  function setStatus(message, type = '') {
+    els.status.textContent = message;
+    els.status.className = 'status' + (type ? ' ' + type : '');
   }
 
   function setupControls() {
     els.fontSelect.innerHTML = FONTS.map(f =>
-      `<option value="${f.id}">${f.label}${f.placeholder ? ' (helyettesítő)' : ''}</option>`
+      '<option value="' + f.id + '">' + f.label + (f.placeholder ? ' (fontfájl szükséges)' : '') + '</option>'
     ).join('');
     els.fontSelect.value = state.fontId;
 
     els.colorGrid.innerHTML = LED_COLORS.map(c =>
-      `<button type="button" class="color-choice" data-color="${c.id}" style="--swatch:${c.css}" aria-label="${c.label}" role="radio"><span>${c.label}</span></button>`
+      '<button type="button" class="color-choice" data-color="' + c.id + '" style="--swatch:' + c.css + '" aria-label="' + c.label + '" role="radio"><span>' + c.label + '</span></button>'
     ).join('');
 
     els.textInput.value = state.text;
@@ -138,7 +163,7 @@
     });
 
     els.textInput.addEventListener('input', () => {
-      state.text = safeText(els.textInput.value) || 'PETI';
+      state.text = cleanText(els.textInput.value) || 'PETI';
       render();
       autoFit(false);
     });
@@ -149,14 +174,14 @@
       autoFit(false);
     });
 
-    els.engravingControl.addEventListener('click', (e) => {
+    els.engravingControl.addEventListener('click', e => {
       const button = e.target.closest('[data-engraving]');
       if (!button) return;
       state.engraving = button.dataset.engraving;
       render();
     });
 
-    els.colorGrid.addEventListener('click', (e) => {
+    els.colorGrid.addEventListener('click', e => {
       const button = e.target.closest('[data-color]');
       if (!button) return;
       state.led = button.dataset.color;
@@ -187,53 +212,46 @@
     });
 
     els.fitButton.addEventListener('click', () => autoFit(true));
-    els.centerButton.addEventListener('click', () => {
-      state.xPct = 50;
-      state.yPct = 50;
-      render();
-    });
+    els.centerButton.addEventListener('click', centerText);
+    els.centerPreviewButton?.addEventListener('click', centerText);
     els.resetButton.addEventListener('click', reset);
     els.downloadZip.addEventListener('click', openSendModal);
   }
 
-  function textPosition() {
-    const x = SAFE.x + SAFE.width * (state.xPct / 100);
-    // yPct=0 => top; yPct=100 => bottom. Baseline is adjusted by an estimated text height.
-    const textH = state.fontSize * 0.78;
-    const topY = SAFE.y + textH;
-    const bottomY = SAFE.y + SAFE.height;
-    const y = topY + (bottomY - topY) * (state.yPct / 100);
-    return { x, y };
+  function centerText() {
+    state.xPct = 50;
+    state.yPct = 50;
+    render();
   }
 
   function render() {
     const font = selectedFont();
     const led = selectedLed();
-    const pos = textPosition();
+    const pos = previewBaseline();
 
     els.previewText.textContent = state.text || 'PETI';
     els.previewText.setAttribute('x', pos.x.toFixed(2));
     els.previewText.setAttribute('y', pos.y.toFixed(2));
     els.previewText.style.fontFamily = font.family;
     els.previewText.style.fontWeight = String(font.weight);
-    els.previewText.style.fontSize = `${state.fontSize}px`;
+    els.previewText.style.fontSize = state.fontSize + 'px';
 
-    const strokeValue = state.led === 'rgb' ? 'url(#rgbGradient)' : led.value;
+    const paint = state.led === 'rgb' ? 'url(#rgbGradient)' : led.value;
     if (state.engraving === 'outline') {
       els.previewText.setAttribute('fill', 'transparent');
-      els.previewText.setAttribute('stroke', strokeValue);
+      els.previewText.setAttribute('stroke', paint);
       els.previewText.setAttribute('stroke-width', Math.max(1.2, state.fontSize * 0.035).toFixed(2));
       els.previewText.setAttribute('stroke-linejoin', 'round');
     } else {
-      els.previewText.setAttribute('fill', strokeValue);
-      els.previewText.setAttribute('stroke', strokeValue);
+      els.previewText.setAttribute('fill', paint);
+      els.previewText.setAttribute('stroke', paint);
       els.previewText.setAttribute('stroke-width', '0.6');
     }
 
     els.safeZone.style.display = state.showSafe ? '' : 'none';
-    els.sizeOutput.value = `${Math.round(state.fontSize)} mm`;
-    els.xOutput.value = `${Math.round(state.xPct)}%`;
-    els.yOutput.value = `${Math.round(state.yPct)}%`;
+    els.sizeOutput.textContent = Math.round(state.fontSize) + ' mm';
+    els.xOutput.textContent = Math.round(state.xPct) + '%';
+    els.yOutput.textContent = Math.round(state.yPct) + '%';
     els.sizeRange.value = state.fontSize;
     els.xRange.value = state.xPct;
     els.yRange.value = state.yPct;
@@ -249,52 +267,40 @@
 
     els.selectedColorLabel.textContent = led.label;
     els.selectedPrice.textContent = formatHuf(led.price);
-    els.headerPrice.textContent = formatHuf(led.price);
     els.footerText.textContent = state.text || 'PETI';
     els.footerEngraving.textContent = state.engraving === 'outline' ? 'Kontúr' : 'Telibe';
     els.footerColor.textContent = led.label;
     els.footerPrice.textContent = formatHuf(led.price);
 
-    const placeholder = font.placeholder;
-    setStatus(
-      placeholder
-        ? `A „${font.label}” jelenleg helyettesítő betűtípussal látható. A végleges fontfájl később külön behelyezhető.`
-        : 'A terv a megadott gyártási biztonsági zónán belül tartható.',
-      placeholder ? 'warn' : ''
-    );
-  }
-
-  function bbox() {
-    try {
-      return els.previewText.getBBox();
-    } catch {
-      return null;
+    if (font.placeholder) {
+      setStatus('A „' + font.label + '” előnézete helyettesítő betűtípussal jelenik meg. A pontos gyártási görbéhez ennek a fontfájljára is szükség lesz.', 'warn');
+    } else {
+      setStatus('A terv a megadott gyártási biztonsági zónán belül tartható.');
     }
   }
 
-  function autoFit(showMessage = true) {
-    let attempts = 0;
-    const maxAttempts = 80;
-    const maxSize = 92;
+  function bbox() {
+    try { return els.previewText.getBBox(); } catch { return null; }
+  }
 
-    // First try to use the largest readable size, then shrink until it fits.
-    state.fontSize = Math.min(maxSize, Math.max(34, state.fontSize));
+  function autoFit(showMessage = true) {
     state.xPct = 50;
     state.yPct = 50;
+    state.fontSize = Math.min(92, Math.max(34, state.fontSize));
     render();
 
     requestAnimationFrame(() => {
-      while (attempts++ < maxAttempts) {
+      let attempts = 0;
+      while (attempts++ < 80) {
         const box = bbox();
         if (!box) break;
-        const fits = box.width <= SAFE.width - 4 && box.height <= SAFE.height - 4;
-        if (fits) break;
+        if (box.width <= SAFE.width - 4 && box.height <= SAFE.height - 4) break;
         state.fontSize = Math.max(34, state.fontSize - 1);
-        els.previewText.style.fontSize = `${state.fontSize}px`;
+        els.previewText.style.fontSize = state.fontSize + 'px';
       }
       render();
       keepInsideSafeZone();
-      if (showMessage) setStatus('A felirat automatikusan a gyártási biztonsági zónába lett illesztve.', 'good');
+      if (showMessage) setStatus('A felirat automatikusan a gyártási területre lett illesztve.', 'good');
     });
   }
 
@@ -302,36 +308,27 @@
     requestAnimationFrame(() => {
       const box = bbox();
       if (!box) return;
-
-      // If too large, shrink first.
       if (box.width > SAFE.width - 2 || box.height > SAFE.height - 2) {
         autoFit(false);
         return;
       }
 
-      let dx = 0;
-      let dy = 0;
+      let dx = 0, dy = 0;
       if (box.x < SAFE.x) dx = SAFE.x - box.x;
-      if (box.x + box.width > SAFE.x + SAFE.width) dx = (SAFE.x + SAFE.width) - (box.x + box.width);
+      if (box.x + box.width > SAFE.x + SAFE.width) dx = SAFE.x + SAFE.width - (box.x + box.width);
       if (box.y < SAFE.y) dy = SAFE.y - box.y;
-      if (box.y + box.height > SAFE.y + SAFE.height) dy = (SAFE.y + SAFE.height) - (box.y + box.height);
+      if (box.y + box.height > SAFE.y + SAFE.height) dy = SAFE.y + SAFE.height - (box.y + box.height);
 
-      if (Math.abs(dx) > 0.1) state.xPct = clamp(state.xPct + (dx / SAFE.width) * 100, 0, 100);
-      if (Math.abs(dy) > 0.1) state.yPct = clamp(state.yPct + (dy / SAFE.height) * 100, 0, 100);
+      if (Math.abs(dx) > 0.1) state.xPct = clamp(state.xPct + dx / SAFE.width * 100, 0, 100);
+      if (Math.abs(dy) > 0.1) state.yPct = clamp(state.yPct + dy / SAFE.height * 100, 0, 100);
       if (dx || dy) render();
     });
   }
 
   function reset() {
     Object.assign(state, {
-      text: 'PETI',
-      fontId: 'arial-bold',
-      engraving: 'outline',
-      led: 'blue',
-      fontSize: 68,
-      xPct: 50,
-      yPct: 50,
-      showSafe: true
+      text:'PETI', fontId:'arial-bold', engraving:'outline', led:'blue',
+      fontSize:68, xPct:50, yPct:50, showSafe:true
     });
     els.textInput.value = state.text;
     els.fontSelect.value = state.fontId;
@@ -341,207 +338,189 @@
     setStatus('Alaphelyzet visszaállítva.', 'good');
   }
 
-  function setStatus(message, type = '') {
-    els.status.textContent = message;
-    els.status.className = 'status' + (type ? ` ${type}` : '');
+  function loadFont(def) {
+    if (!def.url || !window.opentype) return Promise.resolve(null);
+    if (fontCache.has(def.id)) return fontCache.get(def.id);
+    const promise = new Promise(resolve => {
+      window.opentype.load(def.url, (err, font) => resolve(err ? null : font));
+    });
+    fontCache.set(def.id, promise);
+    return promise;
   }
 
-  function serializeProductionSvg() {
+  async function productionTextMarkup() {
+    const fontDef = selectedFont();
+    const font = await loadFont(fontDef);
+    const text = cleanText(state.text) || 'PETI';
+    const center = targetCenter();
+    const sw = Math.max(0.8, state.fontSize * 0.025).toFixed(2);
+    const paintAttrs = state.engraving === 'outline'
+      ? 'fill="none" stroke="#000000" stroke-width="' + sw + '" stroke-linejoin="round"'
+      : 'fill="#000000" stroke="none"';
+
+    if (!font) {
+      const pos = previewBaseline();
+      return '<text x="' + pos.x.toFixed(2) + '" y="' + pos.y.toFixed(2) + '" text-anchor="middle" font-family="' +
+        escapeXml(fontDef.family.split(',')[0].replace(/["']/g,'')) + '" font-size="' + state.fontSize +
+        '" font-weight="' + fontDef.weight + '" ' + paintAttrs + '>' + escapeXml(text) + '</text>';
+    }
+
+    const path = font.getPath(text, 0, 0, state.fontSize, { kerning:true });
+    const box = path.getBoundingBox();
+    const cx = (box.x1 + box.x2) / 2;
+    const cy = (box.y1 + box.y2) / 2;
+    const tx = center.x - cx;
+    const ty = center.y - cy;
+    return '<g transform="translate(' + tx.toFixed(3) + ' ' + ty.toFixed(3) + ')"><path d="' +
+      path.toPathData(3) + '" ' + paintAttrs + '/></g>';
+  }
+
+  async function serializeProductionSvg() {
+    const textMarkup = await productionTextMarkup();
     const font = selectedFont();
-    const led = selectedLed();
-    const pos = textPosition();
-    const text = escapeXml(state.text || 'PETI');
-    const color = state.led === 'rgb' ? '#000000' : '#000000';
-    const modeAttrs = state.engraving === 'outline'
-      ? `fill="none" stroke="${color}" stroke-width="${Math.max(1.2, state.fontSize * 0.035).toFixed(2)}" stroke-linejoin="round"`
-      : `fill="${color}" stroke="none"`;
+    const fallbackNote = font.placeholder
+      ? '\n  <!-- FIGYELEM: ehhez a BT betűtípushoz a pontos fontfájl nincs a projektben; ellenőrizd gyártás előtt. -->'
+      : '';
 
-    return `<?xml version="1.0" encoding="UTF-8"?>\n` +
-`<svg xmlns="http://www.w3.org/2000/svg" width="490mm" height="120mm" viewBox="0 0 490 120">\n` +
-`  <!-- Lakás Dekor – Kamionos LED tábla -->\n` +
-`  <!-- Tervazonosító: ${state.id} -->\n` +
-`  <!-- Biztonsági terület: x=50..440 mm, y=14..115 mm -->\n` +
-`  <!-- FONT FIGYELEM: a <text> elemet gyártás előtt görbévé kell alakítani, ha a gravírozó szoftver nem rendelkezik ezzel a betűtípussal. -->\n` +
-`  <rect x="0" y="0" width="490" height="120" fill="none" stroke="#000" stroke-width="0.2"/>\n` +
-`  <text x="${pos.x.toFixed(2)}" y="${pos.y.toFixed(2)}" text-anchor="middle" ` +
-`font-family="${escapeXml(font.family.split(',')[0].replace(/[\"']/g,''))}" font-size="${state.fontSize}" font-weight="${font.weight}" ${modeAttrs}>${text}</text>\n` +
-`</svg>\n`;
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n' +
+      '<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="490mm" height="120mm" viewBox="0 0 490 120" ' +
+      'data-design-id="' + escapeXml(state.id) + '" data-led="' + escapeXml(selectedLed().label) + '" data-engraving="' +
+      escapeXml(state.engraving === 'outline' ? 'Kontúr gravírozás' : 'Telibe gravírozott') + '">\n' +
+      '  <!-- Lakás Dekor – Kamionos LED tábla -->\n' +
+      '  <!-- Tervazonosító: ' + escapeXml(state.id) + ' -->\n' +
+      '  <!-- Gyártási terület: bal/jobb 50 mm, felül 14 mm, alul 5 mm -->' + fallbackNote + '\n' +
+      '  <rect x="0.2" y="0.2" width="489.6" height="119.6" fill="none" stroke="#000000" stroke-width="0.4" data-role="tabla-kontur"/>\n' +
+      '  ' + textMarkup + '\n' +
+      '</svg>';
   }
 
-  function escapeXml(value) {
-    return String(value).replace(/[<>&\"']/g, c => ({
-      '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;'
-    }[c]));
-  }
-
-  function orderJson() {
-    const font = selectedFont();
-    const led = selectedLed();
-    return JSON.stringify({
-      version: '1.0.0',
-      designId: state.id,
-      product: 'Kamionos LED tábla',
-      boardMm: { width: 490, height: 120 },
-      safeMarginsMm: { left: 50, right: 50, top: 14, bottom: 5 },
-      text: state.text,
-      font: { id: font.id, label: font.label, browserFallback: font.family, placeholder: font.placeholder },
-      engraving: state.engraving === 'outline' ? 'Kontúr gravírozás' : 'Telibe gravírozott',
-      ledColor: led.label,
-      ledColorId: led.id,
-      priceHuf: led.price,
-      layout: { fontSizeMm: state.fontSize, xPercent: state.xPct, yPercent: state.yPct },
-      createdAt: new Date().toISOString()
-    }, null, 2);
-  }
-
-  async function svgToPngBlob() {
+  function previewSvgString() {
     const clone = els.designSvg.cloneNode(true);
-    const safe = clone.querySelector('#safeZone');
-    if (safe) safe.remove();
+    clone.querySelector('#safeZone')?.remove();
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     clone.setAttribute('width', '1470');
     clone.setAttribute('height', '360');
-
-    // Add all computed style essentials inline for export.
-    const sourceText = clone.querySelector('#previewText');
-    const font = selectedFont();
-    const led = selectedLed();
-    if (sourceText) {
-      sourceText.style.fontFamily = font.family;
-      sourceText.style.fontWeight = String(font.weight);
-      sourceText.style.fontSize = `${state.fontSize}px`;
-      const paint = state.led === 'rgb' ? 'url(#rgbGradient)' : led.value;
-      if (state.engraving === 'outline') {
-        sourceText.setAttribute('fill', 'transparent');
-        sourceText.setAttribute('stroke', paint);
-        sourceText.setAttribute('stroke-width', Math.max(1.2, state.fontSize * 0.035).toFixed(2));
-      } else {
-        sourceText.setAttribute('fill', paint);
-        sourceText.setAttribute('stroke', paint);
-        sourceText.setAttribute('stroke-width', '0.6');
-      }
-    }
-
-    const xml = new XMLSerializer().serializeToString(clone);
-    const svgBlob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
-
-    try {
-      const image = await loadImage(url);
-      const canvas = document.createElement('canvas');
-      canvas.width = 1470;
-      canvas.height = 360;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#07080c';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-      return await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 0.95));
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    return new XMLSerializer().serializeToString(clone);
   }
 
-  function loadImage(url) {
+  function svgToJpegBlob(svgString) {
     return new Promise((resolve, reject) => {
+      const blob = new Blob([svgString], { type:'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 1470;
+          canvas.height = 360;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#0b0d12';
+          ctx.fillRect(0,0,canvas.width,canvas.height);
+          ctx.drawImage(img,0,0,canvas.width,canvas.height);
+          canvas.toBlob(j => {
+            URL.revokeObjectURL(url);
+            j ? resolve(j) : reject(new Error('Az előnézeti kép nem készíthető el.'));
+          }, 'image/jpeg', .93);
+        } catch (e) {
+          URL.revokeObjectURL(url);
+          reject(e);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Az előnézet feldolgozása sikertelen.'));
+      };
       img.src = url;
     });
   }
 
+  function designSummary() {
+    return [
+      'Felirat: ' + (state.text || '—'),
+      'Méret: 49 × 12 cm (490 × 120 mm)',
+      'Betűtípus: ' + selectedFont().label,
+      'Gravírozás: ' + (state.engraving === 'outline' ? 'Kontúr gravírozás' : 'Telibe gravírozott'),
+      'LED szín: ' + selectedLed().label,
+      'Ár: ' + formatHuf(selectedLed().price),
+      'Gyártási margók: bal 50 mm, jobb 50 mm, felül 14 mm, alul 5 mm'
+    ].join(' | ');
+  }
+
+  async function buildProjectZip(designId) {
+    if (!window.JSZip) throw new Error('A ZIP-kezelő nem töltődött be.');
+    const productionSvg = await serializeProductionSvg();
+    const previewBlob = await svgToJpegBlob(previewSvgString());
+    const zip = new JSZip();
+
+    zip.file(designId + '.svg', productionSvg);
+    zip.file(designId + '_TERV.jpg', previewBlob);
+    zip.file('00_TERV_ADATOK.txt',
+      'LAKÁS DEKOR – KAMIONOS LED TÁBLA\r\n\r\n' +
+      'Tervazonosító: ' + designId + '\r\n' +
+      designSummary() + '\r\n\r\n' +
+      'Gyártási fájl: SVG 1.1, méretarányos 490 × 120 mm.\r\n'
+    );
+
+    const zipBlob = await zip.generateAsync({
+      type:'blob',
+      compression:'DEFLATE',
+      compressionOptions:{ level:7 }
+    });
+
+    return { zipBlob, previewBlob, productionSvg };
+  }
 
   function setSendProgress(title, text, designId) {
-    const titleEl = $('#sendModalTitle');
+    $('#sendModalTitle').textContent = title;
     const intro = document.querySelector('#sendFormView .send-modal-intro');
-    const idEl = $('#designIdPreview');
-    if (titleEl) titleEl.textContent = title;
     if (intro) intro.textContent = text;
-    if (idEl && designId) idEl.textContent = designId;
+    if (designId) $('#designIdPreview').textContent = designId;
   }
 
   function openSendModal() {
     if (sendInProgress) return;
-    const modal = $('#sendModal');
-    if (!modal) {
-      setStatus('A mentési ablak nem található. Frissítsd az oldalt, majd próbáld újra.', 'warn');
+    if (!cleanText(state.text)) {
+      setStatus('A mentéshez adj meg egy feliratot.', 'warn');
+      els.textInput.focus();
       return;
     }
-    const err = $('#sendError');
-    if (err) err.textContent = '';
+    $('#sendError').textContent = '';
     $('#sendFormView').hidden = false;
     $('#sendSuccessView').hidden = true;
-    modal.hidden = false;
+    $('#sendModal').hidden = false;
     document.body.classList.add('modal-open');
-    setSendProgress('Terv mentése folyamatban…', 'A ZIP-fájl és az előnézeti kép elküldése folyamatban van.', state.id);
+    setSendProgress('Terv mentése folyamatban…', 'A gyártási SVG 1.1, ZIP-fájl és előnézeti kép elküldése folyamatban van.', state.id);
     sendDesign(state.id);
   }
 
   function closeSendModal() {
     if (sendInProgress) return;
-    const modal = $('#sendModal');
-    if (modal) modal.hidden = true;
+    $('#sendModal').hidden = true;
     document.body.classList.remove('modal-open');
   }
 
   function fetchWithTimeout(url, options, timeoutMs = 30000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
-    return fetch(url, { ...options, signal: controller.signal })
-      .finally(() => clearTimeout(timer));
-  }
-
-  async function buildProjectZip() {
-    if (!window.JSZip) throw new Error('A ZIP-kezelő nem töltődött be.');
-    const zip = new JSZip();
-    const base = state.id;
-
-    zip.file(`${base}.svg`, serializeProductionSvg());
-    zip.file(`${base}.json`, orderJson());
-    zip.file('GYARTASI-MEGJEGYZES.txt',
-`Kamionos LED tábla – ${state.id}\n\n` +
-`Méret: 490 × 120 mm\n` +
-`Biztonsági margók: bal 50 mm, jobb 50 mm, felül 14 mm, alul 5 mm\n` +
-`Felirat: ${state.text}\n` +
-`Betűtípus: ${selectedFont().label}\n` +
-`Gravírozás: ${state.engraving === 'outline' ? 'Kontúr gravírozás' : 'Telibe gravírozott'}\n` +
-`LED szín: ${selectedLed().label}\n` +
-`Ár: ${formatHuf(selectedLed().price)}\n\n` +
-`FONTOS: Az SVG szöveges elemet tartalmaz. Ha a gravírozó szoftver nem rendelkezik a kiválasztott betűtípussal, gyártás előtt alakítsd görbévé/path-tá.\n`);
-
-    let previewBlob = null;
-    try {
-      previewBlob = await svgToPngBlob();
-      if (previewBlob) zip.file(`${base}-elozet.png`, previewBlob);
-    } catch (err) {
-      console.warn('PNG export kihagyva:', err);
-    }
-
-    const zipBlob = await zip.generateAsync({
-      type: 'blob',
-      compression: 'DEFLATE',
-      compressionOptions: { level: 6 }
-    });
-
-    return { zipBlob, previewBlob };
+    return fetch(url, { ...options, signal:controller.signal }).finally(() => clearTimeout(timer));
   }
 
   async function sendDesign(designId) {
     if (sendInProgress) return;
     sendInProgress = true;
     els.downloadZip.disabled = true;
+    els.loading?.classList.remove('hidden');
     const err = $('#sendError');
     if (err) err.textContent = '';
     setStatus('A gyártási terv mentése és küldése folyamatban…');
 
     try {
-      const { zipBlob, previewBlob } = await buildProjectZip();
-      const totalSize = zipBlob.size + (previewBlob?.size || 0);
-      if (totalSize > 7_000_000) {
-        throw new Error('A terv fájlmérete túl nagy az automatikus küldéshez.');
-      }
+      const { zipBlob, previewBlob, productionSvg } = await buildProjectZip(designId);
+      if (zipBlob.size + previewBlob.size > 7_000_000) throw new Error('A terv fájlmérete túl nagy az automatikus küldéshez.');
 
       const fd = new FormData();
-      fd.append('_subject', `Új Lakás Dekor kamionos LED tábla terv – ${designId}`);
+      fd.append('_subject', 'Új Lakás Dekor kamionos LED tábla terv – ' + designId);
       fd.append('_template', 'table');
       fd.append('_captcha', 'false');
       fd.append('_url', location.href);
@@ -552,32 +531,27 @@
       fd.append('led_szin', selectedLed().label);
       fd.append('meret', '49 × 12 cm');
       fd.append('ar', formatHuf(selectedLed().price));
-      fd.append('terv_adatok', orderJson());
-      fd.append('terv_zip', new File([zipBlob], `${designId}-kamionos-led-tabla.zip`, { type: 'application/zip' }));
-      if (previewBlob) {
-        fd.append('terv_kep', new File([previewBlob], `${designId}-elozet.png`, { type: 'image/png' }));
-      }
+      fd.append('terv_adatok', designSummary());
+      fd.append('gyartasi_svg11', new File([productionSvg], designId + '.svg', { type:'image/svg+xml' }));
+      fd.append('terv_zip', new File([zipBlob], designId + '-kamionos-led-tabla.zip', { type:'application/zip' }));
+      fd.append('terv_kep', new File([previewBlob], designId + '_TERV.jpg', { type:'image/jpeg' }));
 
       await fetchWithTimeout(FORMSUBMIT_ENDPOINT, {
-        method: 'POST',
-        body: fd,
-        mode: 'no-cors',
-        credentials: 'omit',
-        cache: 'no-store'
+        method:'POST',
+        body:fd,
+        mode:'no-cors',
+        credentials:'omit',
+        cache:'no-store'
       });
 
       $('#successDesignId').textContent = designId;
       $('#sendModal').dataset.sentDesignId = designId;
       $('#sendFormView').hidden = true;
       $('#sendSuccessView').hidden = false;
-      setStatus(`Terv sikeresen elmentve: ${designId}`, 'good');
+      setStatus('Terv sikeresen elmentve: ' + designId, 'good');
     } catch (error) {
       console.error(error);
-      setSendProgress(
-        'A terv mentése nem sikerült',
-        'Ellenőrizd az internetkapcsolatot, majd próbáld újra.',
-        designId
-      );
+      setSendProgress('A terv mentése nem sikerült', 'Ellenőrizd az internetkapcsolatot, majd próbáld újra.', designId);
       if (err) {
         err.textContent = error?.name === 'AbortError'
           ? 'A küldés túl sokáig tartott. Kérlek, próbáld újra.'
@@ -587,83 +561,36 @@
     } finally {
       sendInProgress = false;
       els.downloadZip.disabled = false;
+      els.loading?.classList.add('hidden');
     }
   }
 
-  async function downloadProjectZip() {
-    if (!window.JSZip) {
-      setStatus('A ZIP könyvtár nem töltődött be. Ellenőrizd az internetkapcsolatot, majd próbáld újra.', 'warn');
-      return;
-    }
-
-    els.downloadZip.disabled = true;
-    els.downloadZip.textContent = 'ZIP készítése…';
-    setStatus('A gyártási fájlok készítése folyamatban…');
-
+  function navigateBackToShop(url) {
     try {
-      const zip = new JSZip();
-      const base = state.id;
-      zip.file(`${base}.svg`, serializeProductionSvg());
-      zip.file(`${base}.json`, orderJson());
-      zip.file('GYARTASI-MEGJEGYZES.txt',
-`Kamionos LED tábla – ${state.id}\n\n` +
-`Méret: 490 × 120 mm\n` +
-`Biztonsági margók: bal 50 mm, jobb 50 mm, felül 14 mm, alul 5 mm\n` +
-`Felirat: ${state.text}\n` +
-`Betűtípus: ${selectedFont().label}\n` +
-`Gravírozás: ${state.engraving === 'outline' ? 'Kontúr' : 'Telibe'}\n` +
-`LED szín: ${selectedLed().label}\n` +
-`Ár: ${formatHuf(selectedLed().price)}\n\n` +
-`FONTOS: Az SVG jelenleg SVG <text> elemet tartalmaz. Ha a gyártó/gravírozó szoftver nem rendelkezik a kiválasztott betűtípussal, a szöveget gyártás előtt görbévé/path-tá kell alakítani.\n`);
-
-      try {
-        const png = await svgToPngBlob();
-        if (png) zip.file(`${base}-elozet.png`, png);
-      } catch (err) {
-        console.warn('PNG export kihagyva:', err);
-      }
-
-      const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
-      downloadBlob(blob, `${base}-kamionos-led-tabla.zip`);
-      setStatus('A teljes terv ZIP-ben elkészült és letöltődött.', 'good');
-    } catch (error) {
-      console.error(error);
-      setStatus('A ZIP készítése közben hiba történt. Nyisd meg a böngésző konzolt a részletekhez.', 'warn');
-    } finally {
-      els.downloadZip.disabled = false;
-      els.downloadZip.textContent = 'Teljes terv letöltése ZIP-ben';
+      if (window.top && window.top !== window) window.top.location.href = url;
+      else window.location.href = url;
+    } catch {
+      window.location.href = url;
     }
   }
-
-  function downloadBlob(blob, filename) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  document.querySelectorAll('[data-close-send]').forEach(el => el.addEventListener('click', closeSendModal));
-  document.addEventListener('keydown', e => {
-    const modal = $('#sendModal');
-    if (e.key === 'Escape' && modal && !modal.hidden && !sendInProgress) closeSendModal();
-  });
-  $('#returnToShop')?.addEventListener('click', returnToShop);
 
   function returnToShop() {
-    if (!returnUrl) return;
+    const id = $('#sendModal').dataset.sentDesignId || state.id;
     const url = new URL(returnUrl, location.href);
-    url.searchParams.set('kamionterv', state.id);
+    url.searchParams.set('kamionterv', id);
     url.searchParams.set('kamionnev', state.text);
     url.searchParams.set('kamionfont', state.fontId);
     url.searchParams.set('kamiongrav', state.engraving);
     url.searchParams.set('kamionled', state.led);
     url.searchParams.set('kamionar', String(selectedLed().price));
-    location.href = url.toString();
+    navigateBackToShop(url.toString());
   }
+
+  document.querySelectorAll('[data-close-send]').forEach(el => el.addEventListener('click', closeSendModal));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !$('#sendModal').hidden && !sendInProgress) closeSendModal();
+  });
+  $('#returnToShop').addEventListener('click', returnToShop);
 
   setupControls();
   render();
