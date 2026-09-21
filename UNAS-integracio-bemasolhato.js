@@ -3,7 +3,7 @@
 
   /*
     LAKÁS DEKOR – KAMIONOS LED TÁBLA / UNAS
-    V1 – végleges kamionos tervező integráció
+    V2 – végleges kamionos tervező integráció / rejtett natív LED + gravírozás mezők
 
     UNAS termék:
     https://falmatrica-lakasdekor.hu/Tervezd-meg-sajatodat
@@ -175,35 +175,49 @@
     if (!select) return;
 
     const words = (captionWords || []).map(norm);
-    let target = select;
+    const hasCaption = text => words.some(w => text === w || text.startsWith(w + ' ') || text.includes(w));
 
-    // Walk upward to the smallest wrapper that contains this select and its caption,
-    // but avoid hiding a large product-info container.
+    // A legkisebb olyan UNAS-sor megkeresése, amelyben a cím és pontosan ez az egy select van.
+    let target = null;
     let p = select.parentElement;
-    for (let i = 0; i < 4 && p; i++, p = p.parentElement) {
+
+    for (let i = 0; i < 6 && p; i++, p = p.parentElement) {
       const t = norm(txt(p));
       const selectCount = p.querySelectorAll ? p.querySelectorAll('select').length : 0;
-      const hit = words.some(w => t.includes(w));
-      if (hit && selectCount <= 1 && t.length < 220) {
+      const hasCart = p.querySelector ? !!p.querySelector('button,a,input[type="submit"],input[type="button"]') : false;
+
+      if (hasCaption(t) && selectCount === 1 && !hasCart && t.length < 320) {
         target = p;
         break;
       }
     }
 
+    // Ha az UNAS külön sorba tette a címkét, legalább magát a select kontrollt rejtsük el.
+    if (!target) {
+      target = select.closest('label') || select.parentElement || select;
+    }
+
+    target.dataset.kamionHiddenChoice = '1';
     target.style.setProperty('display','none','important');
     target.style.setProperty('visibility','hidden','important');
     target.style.setProperty('height','0','important');
     target.style.setProperty('min-height','0','important');
+    target.style.setProperty('max-height','0','important');
     target.style.setProperty('margin','0','important');
     target.style.setProperty('padding','0','important');
+    target.style.setProperty('border','0','important');
     target.style.setProperty('overflow','hidden','important');
 
-    // Hide a separate caption too, if UNAS renders it outside the select wrapper.
-    [...document.querySelectorAll('label,div,span,p,strong,b')].forEach(node => {
+    // Különálló rövid címke elrejtése (pl. „LED színe”, „Gravírozás”).
+    [...document.querySelectorAll('label,span,p,strong,b,div')].forEach(node => {
+      if (node === target || node.contains(select) || select.contains(node)) return;
       const own = norm(txt(node).replace(/\s*[:：]\s*$/, ''));
-      if (!own || own.length > 70) return;
-      if (words.some(w => own === w || own.startsWith(w + ' '))) {
-        if (!node.contains(select) && !select.contains(node)) {
+      if (!own || own.length > 45) return;
+
+      if (words.some(w => own === w)) {
+        const childControls = node.querySelectorAll ? node.querySelectorAll('select,input,button,a').length : 0;
+        if (childControls === 0) {
+          node.dataset.kamionHiddenCaption = '1';
           node.style.setProperty('display','none','important');
         }
       }
@@ -409,6 +423,18 @@
   }
 
   install();
+
+  // Az UNAS a termékblokkot késleltetve is újrarenderelheti,
+  // ezért néhány könnyű utóellenőrzés biztosítja, hogy a két natív mező ne villanjon vissza.
+  [250, 700, 1500, 3000].forEach(delay => {
+    setTimeout(() => {
+      hideNativeDesignerChoices();
+      ensureDesignerButton();
+      if (state.id) {
+        applyReturnedDesign();
+      }
+    }, delay);
+  });
 
   let runs = 0;
   const observer = new MutationObserver(() => {
