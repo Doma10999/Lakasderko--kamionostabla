@@ -3,7 +3,7 @@
 
   /*
     LAKÁS DEKOR – KAMIONOS LED TÁBLA / UNAS
-    V5 – stabil Tervezés gomb + rendelési integráció
+    V6 – stabil Tervezés gomb + natív LED/Gravírozás mezők biztos elrejtése
 
     FONTOS:
     - UNAS beszúrás: body end
@@ -17,7 +17,7 @@
   */
 
   const CFG = {
-    version: '20260921-kamion-v5-button-fix',
+    version: '20260921-kamion-v6-ui-fix',
     productPath: '/Tervezd-meg-sajatodat',
     productNameRx: /tervezd\s+meg\s+saj[aá]todat/i,
     productSkuRx: /FL340481/i,
@@ -42,12 +42,23 @@
     }
   };
 
-  const pathLower = String(location.pathname || '').replace(/\/$/, '').toLowerCase();
-  const isProductPage =
-    pathLower === CFG.productPath.toLowerCase() ||
-    pathLower.includes(CFG.productPath.toLowerCase());
+  function isTargetProductPage() {
+    const pathLower = String(location.pathname || '').replace(/\/$/, '').toLowerCase();
 
-  if (!isProductPage) return;
+    if (
+      pathLower === CFG.productPath.toLowerCase() ||
+      pathLower.includes(CFG.productPath.toLowerCase())
+    ) {
+      return true;
+    }
+
+    const bodyText = String(document.body ? document.body.textContent : '');
+
+    return (
+      CFG.productSkuRx.test(bodyText) ||
+      CFG.productNameRx.test(bodyText)
+    );
+  }
 
   const qs = new URLSearchParams(location.search || '');
   let installing = false;
@@ -394,6 +405,34 @@
     );
   }
 
+  function hideByExactLabel(names, marker) {
+    const wanted = names.map(norm);
+
+    Array.from(document.querySelectorAll('label,div,span,p,strong,b')).forEach(function (el) {
+      const own = norm(
+        directText(el)
+          .replace(/\s*[:：]\s*$/, '')
+          .trim()
+      );
+
+      if (wanted.indexOf(own) === -1) return;
+
+      el.style.setProperty('display', 'none', 'important');
+
+      let parent = el.parentElement;
+
+      for (let i = 0; i < 3 && parent; i++, parent = parent.parentElement) {
+        const selects = parent.querySelectorAll ? parent.querySelectorAll('select') : [];
+
+        if (selects.length === 1) {
+          parent.style.setProperty('display', 'none', 'important');
+          parent.dataset[marker] = '1';
+          break;
+        }
+      }
+    });
+  }
+
   function hideNativeChoices() {
     const led = findLedSelect();
     const grav = findEngravingSelect();
@@ -405,6 +444,18 @@
     if (grav) {
       hideSelectRow(grav, ['Gravírozás', 'Gravirozas'], 'kamionGravHidden');
     }
+
+    // Fallback: akkor is elrejti a két natív UNAS sort,
+    // ha az UNAS a selectet később vagy egyedi wrapperben rajzolja ki.
+    hideByExactLabel(
+      ['LED színe', 'LED szin'],
+      'kamionLedHiddenFallback'
+    );
+
+    hideByExactLabel(
+      ['Gravírozás', 'Gravirozas'],
+      'kamionGravHiddenFallback'
+    );
   }
 
   const DESIGN_ID_RX = /terv\s*azonos[ií]t[oó]|tervazonos[ií]t[oó]/i;
@@ -582,7 +633,7 @@
 
     if (!input) {
       console.warn(
-        '[Kamionos LED V5] Nem található a natív Tervazonosító mező. Paraméter ID:',
+        '[Kamionos LED V6] Nem található a natív Tervazonosító mező. Paraméter ID:',
         CFG.nativeParamId
       );
       return false;
@@ -681,12 +732,12 @@
   function renderDesignerButton(button) {
     if (!button || !button.parentElement) return;
 
-    let wrap = document.getElementById('kamionDesignerWrapV4');
-    let designerButton = document.getElementById('kamionDesignerButtonV4');
+    let wrap = document.getElementById('kamionDesignerWrapV6');
+    let designerButton = document.getElementById('kamionDesignerButtonV6');
 
     if (!wrap) {
       wrap = document.createElement('div');
-      wrap.id = 'kamionDesignerWrapV4';
+      wrap.id = 'kamionDesignerWrapV6';
       wrap.style.cssText =
         'display:block;' +
         'width:100%;' +
@@ -708,7 +759,7 @@
 
     if (!designerButton) {
       designerButton = document.createElement('button');
-      designerButton.id = 'kamionDesignerButtonV4';
+      designerButton.id = 'kamionDesignerButtonV6';
       designerButton.type = 'button';
 
       designerButton.style.cssText =
@@ -883,7 +934,7 @@
   }
 
   function installProductPage() {
-    if (!isProductPage || installing) return false;
+    if (!isTargetProductPage() || installing) return false;
 
     installing = true;
 
@@ -973,7 +1024,7 @@
   }
 
   document.addEventListener('submit', function (event) {
-    if (!isProductPage || !state.hasDesign) return;
+    if (!isTargetProductPage() || !state.hasDesign) return;
 
     saveDesign();
 
@@ -999,7 +1050,7 @@
   }, true);
 
   document.addEventListener('formdata', function (event) {
-    if (!isProductPage || !state.hasDesign || !state.id || !event.formData) return;
+    if (!isTargetProductPage() || !state.hasDesign || !state.id || !event.formData) return;
 
     const input = primaryDesignIdInput();
 
@@ -1009,7 +1060,7 @@
   }, true);
 
   console.log(
-    '[Kamionos LED V5] aktív:',
+    '[Kamionos LED V6] aktív:',
     CFG.version,
     'terv:',
     state.id || '-',
