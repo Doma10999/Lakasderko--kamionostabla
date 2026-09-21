@@ -144,6 +144,10 @@ input[type=range]{width:100%;accent-color:#27221f}
 .pattern-mirror-circle{fill:#fff;stroke:#e07b27;stroke-width:1.2;vector-effect:non-scaling-stroke}
 .pattern-mirror-icon{fill:#d86d17;font-size:10px;font-weight:900;font-family:Arial,sans-serif;pointer-events:none;user-select:none}
 .pattern-mirror-control:hover .pattern-mirror-circle{fill:#fff7ef}
+.object-stretch-control{pointer-events:all;cursor:ew-resize;touch-action:none}
+.object-stretch-circle{fill:#fff;stroke:#e07b27;stroke-width:1.2;vector-effect:non-scaling-stroke}
+.object-stretch-icon{fill:#d86d17;font-size:10px;font-weight:900;font-family:Arial,sans-serif;pointer-events:none;user-select:none}
+.object-stretch-control:hover .object-stretch-circle{fill:#fff7ef}
 .loading{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;gap:12px;align-items:center;background:rgba(255,255,255,.96);border:1px solid #ddd5cf;border-radius:14px;padding:14px 16px;color:#5d514b;z-index:6;transition:opacity .16s}
 .loading.hidden{opacity:0;pointer-events:none}
 .spinner{width:18px;height:18px;border:2px solid #e7ddd6;border-top-color:#2d2724;border-radius:50%;animation:spin .8s linear infinite}

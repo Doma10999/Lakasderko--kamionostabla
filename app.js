@@ -949,6 +949,73 @@
   }
 
   function currentSelectionBox() {
+    /*
+      Külön vízszintes széthúzó/keskenyítő fogó.
+      A sarokfogók továbbra is méretarányosan működnek.
+      Ez a ↔ fogó csak a szélességet módosítja, maximum a
+      fehér szaggatott Biztonsági zónáig.
+    */
+    {
+      const stretchX = x + w;
+      const stretchY = y + h / 2;
+
+      const stretchGroup = document.createElementNS(NS, 'g');
+      stretchGroup.setAttribute('class', 'object-stretch-control');
+      stretchGroup.setAttribute(
+        'transform',
+        'translate(' + stretchX.toFixed(2) + ' ' + stretchY.toFixed(2) + ')'
+      );
+      stretchGroup.setAttribute('role', 'button');
+      stretchGroup.setAttribute('aria-label', 'Széthúzás vagy keskenyítés');
+
+      const stretchCircle = document.createElementNS(NS, 'circle');
+      stretchCircle.setAttribute('r', '7.2');
+      stretchCircle.setAttribute('class', 'object-stretch-circle');
+      stretchGroup.appendChild(stretchCircle);
+
+      const stretchText = document.createElementNS(NS, 'text');
+      stretchText.setAttribute('class', 'object-stretch-icon');
+      stretchText.setAttribute('x', '0');
+      stretchText.setAttribute('y', '0.8');
+      stretchText.setAttribute('text-anchor', 'middle');
+      stretchText.setAttribute('dominant-baseline', 'middle');
+      stretchText.textContent = '↔';
+      stretchGroup.appendChild(stretchText);
+
+      stretchGroup.addEventListener('pointerdown', evt => {
+        evt.preventDefault();
+        evt.stopPropagation();
+
+        const selection = currentSelectionBox();
+        if (!selection) return;
+
+        if (selectedObject.type === 'pattern') {
+          const inst = selectedPatternInstance();
+          if (!inst) return;
+
+          directEditInteraction = {
+            mode:'pattern-stretch',
+            pointerId:evt.pointerId,
+            patternId:inst.id,
+            anchorX:selection.x,
+            startW:Math.max(1, selection.width)
+          };
+        } else {
+          directEditInteraction = {
+            mode:'text-stretch',
+            pointerId:evt.pointerId,
+            anchorX:selection.x,
+            startScaleX:state.textScaleX,
+            startW:Math.max(1, selection.width)
+          };
+        }
+
+        try { els.designSvg.setPointerCapture(evt.pointerId); } catch (_) {}
+      });
+
+      els.selectionLayer.appendChild(stretchGroup);
+    }
+
     if (selectedObject.type === 'pattern') {
       const inst = selectedPatternInstance();
       return inst ? { x:inst.x, y:inst.y, width:inst.w, height:inst.h } : null;
@@ -1306,6 +1373,56 @@
       return;
     }
 
+    if (directEditInteraction.mode === 'text-stretch') {
+      const i = directEditInteraction;
+
+      const safeRight = SAFE.x + SAFE.width;
+      const right = clamp(
+        p.x,
+        i.anchorX + 8,
+        safeRight
+      );
+
+      const desiredW = Math.max(8, right - i.anchorX);
+
+      state.textScaleX = clamp(
+        i.startScaleX * (desiredW / Math.max(1, i.startW)),
+        .25,
+        6
+      );
+
+      const desiredCX = i.anchorX + desiredW / 2;
+
+      state.xPct = clamp(
+        (desiredCX - SAFE.x) / SAFE.width * 100,
+        0,
+        100
+      );
+
+      render();
+
+      /*
+        A valódi glyph-doboz közepét korrigáljuk, hogy a kék
+        szöveg jobb széle ténylegesen a fehér vonalig érjen.
+      */
+      const actualBox = textVisualBox();
+      if (actualBox) {
+        const actualCX = actualBox.x + actualBox.width / 2;
+
+        state.xPct = clamp(
+          state.xPct +
+          (desiredCX - actualCX) / SAFE.width * 100,
+          0,
+          100
+        );
+
+        render();
+      }
+
+      constrainTextToSafeZone(false);
+      return;
+    }
+
     if (directEditInteraction.mode === 'pattern-move') {
       const inst = state.patterns.find(x => x.id === directEditInteraction.patternId);
       if (!inst) return;
@@ -1324,6 +1441,27 @@
         SAFE.y,
         SAFE.y + SAFE.height - inst.h
       );
+
+      updatePatternNodeLive(inst);
+      updateSelectionOverlay();
+      queueSnapshotSave();
+      return;
+    }
+
+    if (directEditInteraction.mode === 'pattern-stretch') {
+      const i = directEditInteraction;
+      const inst = state.patterns.find(x => x.id === i.patternId);
+      if (!inst) return;
+
+      const safeRight = SAFE.x + SAFE.width;
+      const right = clamp(
+        p.x,
+        i.anchorX + 8,
+        safeRight
+      );
+
+      inst.x = i.anchorX;
+      inst.w = Math.max(8, right - i.anchorX);
 
       updatePatternNodeLive(inst);
       updateSelectionOverlay();
@@ -1410,6 +1548,8 @@
 
     if (completedMode.startsWith('pattern-')) {
       render();
+    } else if (completedMode === 'text-stretch') {
+      constrainTextToSafeZone(false);
     } else {
       constrainTextToSafeZone(true);
     }
