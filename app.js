@@ -169,7 +169,7 @@
     patterns: [],
     led: LED_COLORS.some(c => c.id === params.get('led')) ? params.get('led') : 'blue',
     fontSize: clamp(Number(params.get('meret') || 68), 18, 280),
-    textScaleX: clamp(Number(params.get('szelesseg') || 100), 40, 300) / 100,
+    textScaleX: clamp(Number(params.get('szelesseg') || 100), 25, 600) / 100,
     xPct: clamp(Number(params.get('x') || 50), 0, 100),
     yPct: clamp(Number(params.get('y') || 50), 0, 100),
     showSafe: true,
@@ -299,7 +299,7 @@
     state.engraving = snap.engraving === 'fill' ? 'fill' : 'outline';
     state.led = LED_COLORS.some(c => c.id === snap.led) ? snap.led : 'blue';
     state.fontSize = clamp(snap.fontSize, 18, 280);
-    state.textScaleX = clamp(Number(snap.textScaleX || 1), .4, 3);
+    state.textScaleX = clamp(Number(snap.textScaleX || 1), .25, 6);
     state.xPct = clamp(snap.xPct, 0, 100);
     state.yPct = clamp(snap.yPct, 0, 100);
     state.showSafe = snap.showSafe !== false;
@@ -965,8 +965,8 @@
             centerY:cy,
             startFontSize:state.fontSize,
             startScaleX:state.textScaleX,
-            startHalfW:Math.max(1, selection.width / 2),
-            startHalfH:Math.max(1, selection.height / 2)
+            startBoxW:Math.max(1, selection.width),
+            startBoxH:Math.max(1, selection.height)
           };
         }
 
@@ -1099,17 +1099,50 @@
 
     if (directEditInteraction.mode === 'text-resize') {
       /*
-        Szabad, kétirányú átméretezés:
-        - függőleges húzás -> betűmagasság / fontSize
-        - vízszintes húzás -> betűszélesség / textScaleX
-        Így a PETI vízszintesen egészen a fehér szaggatott
-        gyártási határig kihúzható anélkül, hogy túl magas lenne.
+        A szélességet és a magasságot teljesen külön kezeljük.
+        Ez oldja meg azt a hibát, hogy a szöveg magassági limitje
+        korábban megállította a vízszintes növelést is.
       */
-      const halfW = Math.max(1, Math.abs(p.x - directEditInteraction.centerX));
-      const halfH = Math.max(1, Math.abs(p.y - directEditInteraction.centerY));
+      const cx = directEditInteraction.centerX;
+      const cy = directEditInteraction.centerY;
 
-      const widthRatio = halfW / directEditInteraction.startHalfW;
-      const heightRatio = halfH / directEditInteraction.startHalfH;
+      const maxHalfW = Math.max(
+        1,
+        Math.min(
+          cx - SAFE.x,
+          SAFE.x + SAFE.width - cx
+        )
+      );
+
+      const maxHalfH = Math.max(
+        1,
+        Math.min(
+          cy - SAFE.y,
+          SAFE.y + SAFE.height - cy
+        )
+      );
+
+      const desiredW = clamp(
+        Math.abs(p.x - cx) * 2,
+        8,
+        maxHalfW * 2
+      );
+
+      const desiredH = clamp(
+        Math.abs(p.y - cy) * 2,
+        8,
+        maxHalfH * 2
+      );
+
+      /*
+        Először a magasságból számoljuk a fontméretet.
+        Utána a kívánt SZÉLESSÉGET külön állítjuk be a vízszintes
+        skálával. Emiatt akár a teljes fehér szaggatott vonalig
+        kihúzható a felirat.
+      */
+      const heightRatio =
+        desiredH /
+        Math.max(1, directEditInteraction.startBoxH);
 
       const nextFontSize = clamp(
         directEditInteraction.startFontSize * heightRatio,
@@ -1117,17 +1150,32 @@
         280
       );
 
+      const actualFontRatio =
+        nextFontSize /
+        Math.max(1, directEditInteraction.startFontSize);
+
+      const estimatedUnscaledWidth =
+        (directEditInteraction.startBoxW /
+          Math.max(.01, directEditInteraction.startScaleX)) *
+        actualFontRatio;
+
       const nextScaleX = clamp(
-        directEditInteraction.startScaleX * (widthRatio / Math.max(.05, heightRatio)),
-        .4,
-        3
+        desiredW /
+          Math.max(1, estimatedUnscaledWidth),
+        .25,
+        6
       );
 
       state.fontSize = nextFontSize;
       state.textScaleX = nextScaleX;
 
       render();
-      constrainTextToSafeZone(true);
+
+      /*
+        Itt már NEM szabad újra lekicsinyíteni a feliratot.
+        Csak a helyét korrigáljuk, ha a szaggatott terület széléhez ér.
+      */
+      constrainTextToSafeZone(false);
       return;
     }
 
@@ -1288,8 +1336,8 @@
       if (allowShrink && box.width > maxW) {
         state.textScaleX = clamp(
           state.textScaleX * (maxW / box.width),
-          .4,
-          3
+          .25,
+          6
         );
         render();
         box = textVisualBox();
@@ -1297,14 +1345,44 @@
       }
 
       if (allowShrink && box.height > maxH) {
+        const widthBefore = box.width;
+        const oldFontSize = state.fontSize;
+
         state.fontSize = clamp(
           state.fontSize * (maxH / box.height),
           18,
           280
         );
+
+        const fontRatio =
+          state.fontSize /
+          Math.max(1, oldFontSize);
+
+        /*
+          Magasságkorrekció közben megtartjuk a felirat
+          vízszintes méretét, hogy ne ugorjon vissza keskenyebbre.
+        */
+        state.textScaleX = clamp(
+          state.textScaleX /
+          Math.max(.01, fontRatio),
+          .25,
+          6
+        );
+
         render();
         box = textVisualBox();
         if (!box) return;
+
+        if (box.width > maxW) {
+          state.textScaleX = clamp(
+            state.textScaleX * (maxW / box.width),
+            .25,
+            6
+          );
+          render();
+          box = textVisualBox();
+          if (!box) return;
+        }
       }
 
       let dx = 0;
