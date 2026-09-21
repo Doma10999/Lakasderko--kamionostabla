@@ -646,7 +646,7 @@
       box.id = 'kamionPlanStatusV3';
 
       const host = button.parentElement || button;
-      host.insertBefore(box, host.firstChild);
+      host.insertBefore(box, button);
     }
 
     const ledLabel = CFG.ledOptions[state.led] || state.led || '—';
@@ -869,8 +869,8 @@
       buttons.forEach(bindCartButton);
 
       const main = buttons[0];
-      renderStatus(main);
       renderModify(main);
+      renderStatus(main);
 
       hideNativeChoices();
       visuallyHideNativeParameter();
