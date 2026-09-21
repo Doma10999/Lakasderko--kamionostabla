@@ -612,7 +612,7 @@
     $('#sendSuccessView').hidden = true;
     $('#sendModal').hidden = false;
     document.body.classList.add('modal-open');
-    setSendProgress('Terv mentése folyamatban…', 'A gyártási SVG 1.1, ZIP-fájl és előnézeti kép elküldése folyamatban van.', state.id);
+    setSendProgress('Terv mentése folyamatban…', '', state.id);
     sendDesign(state.id);
   }
 
