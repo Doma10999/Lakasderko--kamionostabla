@@ -115,6 +115,7 @@
   const fontCache = new Map();
   const patternSvgCache = new Map();
   let patternRenderToken = 0;
+  let lastPatternRenderKey = '';
 
   const els = {
     textInput: $('#textInput'),
@@ -421,14 +422,16 @@
     ).join('');
 
     els.patternGrid.innerHTML = buttons;
+    updatePatternSummary();
+  }
 
+  function updatePatternSummary() {
     const selected = selectedPatternDefinition();
     if (els.selectedPatternLabel) {
       els.selectedPatternLabel.textContent = selected
         ? selected.label + ' • ' + state.patterns.length + ' minta a terven'
         : (state.patterns.length ? state.patterns.length + ' minta a terven' : 'Nincs minta');
     }
-
     updatePatternActionButtons();
   }
 
@@ -717,6 +720,14 @@
   async function updatePatternPreview(paint) {
     if (!els.patternLayer) return;
 
+    const renderKey = JSON.stringify({
+      engraving: state.engraving,
+      paint,
+      patterns: state.patterns
+    });
+
+    if (renderKey === lastPatternRenderKey) return;
+
     const token = ++patternRenderToken;
     els.patternLayer.replaceChildren();
 
@@ -727,7 +738,36 @@
     if (token !== patternRenderToken) return;
 
     nodes.filter(Boolean).forEach(node => els.patternLayer.appendChild(node));
+    lastPatternRenderKey = renderKey;
     updateSelectionOverlay();
+  }
+
+  function updatePatternNodeLive(inst) {
+    if (!inst || !els.patternLayer) return;
+
+    const group = els.patternLayer.querySelector('[data-pattern-instance="' + inst.id + '"]');
+    if (!group) return;
+
+    group.setAttribute(
+      'transform',
+      inst.flipX
+        ? 'translate(' + (inst.x + inst.w).toFixed(3) + ' ' + inst.y.toFixed(3) + ') scale(-1 1)'
+        : 'translate(' + inst.x.toFixed(3) + ' ' + inst.y.toFixed(3) + ')'
+    );
+
+    const nested = group.querySelector('svg');
+    if (nested) {
+      nested.setAttribute('width', inst.w.toFixed(3));
+      nested.setAttribute('height', inst.h.toFixed(3));
+    }
+
+    const hit = group.querySelector('.pattern-hit');
+    if (hit) {
+      hit.setAttribute('width', inst.w.toFixed(3));
+      hit.setAttribute('height', inst.h.toFixed(3));
+    }
+
+    lastPatternRenderKey = '';
   }
 
   function previewBaseline() {
@@ -797,7 +837,7 @@
     els.footerColor.textContent = led.label;
     els.footerPrice.textContent = formatHuf(led.price);
 
-    renderPatternChoices();
+    updatePatternSummary();
 
     if (font.optionalFile) {
       setStatus(
@@ -1049,7 +1089,9 @@
         SAFE.y + SAFE.height - inst.h
       );
 
-      render();
+      updatePatternNodeLive(inst);
+      updateSelectionOverlay();
+      queueSnapshotSave();
       return;
     }
 
@@ -1088,18 +1130,27 @@
         SAFE.y + SAFE.height - newH
       );
 
-      render();
+      updatePatternNodeLive(inst);
+      updateSelectionOverlay();
+      queueSnapshotSave();
     }
   }
 
   function endDirectEdit(evt) {
     if (!directEditInteraction) return;
 
+    const completedMode = directEditInteraction.mode;
+
     try { els.designSvg.releasePointerCapture(evt.pointerId); } catch (_) {}
     directEditInteraction = null;
     els.previewText.classList.remove('dragging');
 
-    constrainTextToSafeZone(true);
+    if (completedMode.startsWith('pattern-')) {
+      render();
+    } else {
+      constrainTextToSafeZone(true);
+    }
+
     queueSnapshotSave();
     updateSelectionOverlay();
   }
