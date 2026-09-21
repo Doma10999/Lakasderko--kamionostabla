@@ -165,3 +165,31 @@ output { border: 1px solid #e2d7ce; border-radius: 10px; min-height: 36px; displ
   .spec-grid { grid-template-columns: 1fr; }
   .color-grid { grid-template-columns: repeat(5, 1fr); }
 }
+
+
+/* Mentés / küldés modal – a házszámtábla tervező megjelenéséhez igazítva */
+.send-modal[hidden]{display:none!important}
+.send-modal{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px}
+.send-modal-backdrop{position:absolute;inset:0;background:rgba(28,24,22,.58);backdrop-filter:blur(5px)}
+.send-modal-card{position:relative;z-index:1;width:min(560px,100%);max-height:min(760px,calc(100vh - 32px));overflow:auto;background:#fff;border:1px solid #e4ddd7;border-radius:24px;padding:28px;box-shadow:0 28px 90px rgba(30,23,19,.28)}
+.send-modal-close{position:absolute;right:16px;top:14px;width:42px;height:42px;border-radius:999px;border:1px solid #e4ddd7;background:#fff;color:#35261e;font-size:27px;line-height:1;cursor:pointer}
+.send-modal-eyebrow{font-size:11px;letter-spacing:.13em;font-weight:900;color:#8b7b72;margin-bottom:8px}
+.send-modal-card h2{margin:0 42px 10px 0;font-size:26px;line-height:1.16;color:#231f1d}
+.send-modal-intro{margin:0 0 20px;color:#776b64;font-size:14px;line-height:1.55}
+.send-modal .design-id-box{display:flex;align-items:center;justify-content:space-between;gap:18px;margin:6px 0 14px;border:1px solid #e3d8d1;background:#faf6f2;border-radius:14px;padding:12px 14px}
+.send-modal .design-id-box span{font-size:12px;color:#81736b;font-weight:750}
+.send-modal .design-id-box strong{font-size:15px;letter-spacing:.05em;color:#231f1d;word-break:break-all}
+.send-error{min-height:20px;margin-top:10px;color:#a63232;font-size:12px;font-weight:700}
+.send-success{text-align:center;padding:14px 2px 4px}
+.send-success-icon{width:64px;height:64px;margin:2px auto 15px;border-radius:999px;display:grid;place-items:center;background:#e8f4ea;color:#286b36;font-size:34px;font-weight:900}
+.send-success h2{margin:0 0 8px;font-size:27px}
+.send-success p{margin:0 auto 18px;max-width:400px;color:#786c65;line-height:1.55}
+.success-id{margin:0 0 18px!important;text-align:left}
+.full-button{width:100%}
+body.modal-open{overflow:hidden}
+@media (max-width:760px){
+  .send-modal{padding:10px;align-items:flex-end}
+  .send-modal-card{width:100%;max-height:92dvh;border-radius:22px 22px 14px 14px;padding:22px 16px 18px}
+  .send-modal-card h2{font-size:22px;margin-right:42px}
+  .send-modal .design-id-box{align-items:flex-start;flex-direction:column;gap:4px}
+}
