@@ -35,18 +35,39 @@
       label: 'Bahnschrift',
       family: 'LakDekorBahnschrift, Bahnschrift, Arial, sans-serif',
       weight: 700,
-      url: FONT_BASE + 'BAHNSCHRIFT.TTF'
+      urls: [FONT_BASE + 'BAHNSCHRIFT.TTF']
     },
     {
       id: 'bebas-neue',
       label: 'Bebas Neue',
       family: 'LakDekorBebasNeue, "Bebas Neue", Arial, sans-serif',
       weight: 400,
-      url: FONT_BASE + 'BEBASNEUE-REGULAR.TTF'
+      urls: [FONT_BASE + 'BEBASNEUE-REGULAR.TTF']
+    },
+    {
+      id: 'arial-rounded-bold',
+      label: 'Arial Rounded Bold',
+      family: 'LakDekorArialRounded, "Arial Rounded MT Bold", Arial, sans-serif',
+      weight: 700,
+      urls: [FONT_BASE + 'ARLRDBD.TTF']
+    },
+    {
+      id: 'arial',
+      label: 'Arial',
+      family: 'Arial, Helvetica, sans-serif',
+      weight: 700,
+      urls: [FONT_BASE + 'ARIAL.TTF', FONT_BASE + 'arial.ttf'],
+      optionalFile: true
+    },
+    {
+      id: 'arial-black',
+      label: 'Arial Black',
+      family: '"Arial Black", Arial, sans-serif',
+      weight: 900,
+      urls: [FONT_BASE + 'ARIBLK.TTF', FONT_BASE + 'ARIALBLACK.TTF', FONT_BASE + 'arial-black.ttf'],
+      optionalFile: true
     }
   ];
-
-  const PATTERN_BOX = { x: 54, y: 18, width: 82, height: 92 };
 
   const OUTLINE_PATTERNS = [
     { id:'csillagok', label:'Csillagok', file:'csillagok.svg' },
@@ -101,14 +122,21 @@
     engravingControl: $('#engravingControl'),
     patternGrid: $('#patternGrid'),
     selectedPatternLabel: $('#selectedPatternLabel'),
+    mirrorPatternButton: $('#mirrorPatternButton'),
+    duplicatePatternButton: $('#duplicatePatternButton'),
+    deletePatternButton: $('#deletePatternButton'),
+    clearPatternsButton: $('#clearPatternsButton'),
     patternLayer: $('#patternLayer'),
+    selectionLayer: $('#selectionLayer'),
     colorGrid: $('#colorGrid'),
     selectedColorLabel: $('#selectedColorLabel'),
     selectedPrice: $('#selectedPrice'),
     sizeRange: $('#sizeRange'),
+    widthRange: $('#widthRange'),
     xRange: $('#xRange'),
     yRange: $('#yRange'),
     sizeOutput: $('#sizeOutput'),
+    widthOutput: $('#widthOutput'),
     xOutput: $('#xOutput'),
     yOutput: $('#yOutput'),
     fitButton: $('#fitButton'),
@@ -131,20 +159,31 @@
 
   let sendInProgress = false;
   let directEditInteraction = null;
-  let previewSelectionVisible = true;
+  let selectedObject = { type:'text', id:null };
 
   const state = {
     text: cleanText(params.get('nev')) || 'PETI',
     fontId: FONTS.some(f => f.id === params.get('font')) ? params.get('font') : 'bahnschrift',
     engraving: params.get('grav') === 'fill' ? 'fill' : 'outline',
-    patternId: String(params.get('minta') || params.get('pattern') || params.get('kamionminta') || '').trim(),
+    patterns: [],
     led: LED_COLORS.some(c => c.id === params.get('led')) ? params.get('led') : 'blue',
-    fontSize: clamp(Number(params.get('meret') || 68), 34, 92),
+    fontSize: clamp(Number(params.get('meret') || 68), 18, 180),
+    textScaleX: clamp(Number(params.get('szelesseg') || 100), 55, 140) / 100,
     xPct: clamp(Number(params.get('x') || 50), 0, 100),
     yPct: clamp(Number(params.get('y') || 50), 0, 100),
     showSafe: true,
     id: EDIT_DESIGN_ID || makeDesignId()
   };
+
+  const initialPatternId =
+    String(params.get('minta') || params.get('pattern') || params.get('kamionminta') || '')
+      .split(',')[0]
+      .trim();
+
+  if (initialPatternId && patternsForEngraving(state.engraving).some(p => p.id === initialPatternId)) {
+    state.patterns.push(createPatternInstance(initialPatternId, 0));
+  }
+
 
   function clamp(n, min, max) {
     const v = Number(n);
@@ -186,20 +225,22 @@
 
   function designSnapshot() {
     return {
-      version: 2,
+      version: 3,
       designId: state.id,
       savedAt: Date.now(),
       text: state.text,
       fontId: state.fontId,
       engraving: state.engraving,
-      patternId: state.patternId,
+      patterns: state.patterns.map(p => ({ ...p })),
       led: state.led,
       fontSize: state.fontSize,
+      textScaleX: state.textScaleX,
       xPct: state.xPct,
       yPct: state.yPct,
       showSafe: !!state.showSafe
     };
   }
+
 
   function saveDesignSnapshotNow() {
     if (!state.id) return false;
@@ -255,17 +296,28 @@
     state.text = cleanText(snap.text) || 'PETI';
     state.fontId = FONTS.some(f => f.id === snap.fontId) ? snap.fontId : 'bahnschrift';
     state.engraving = snap.engraving === 'fill' ? 'fill' : 'outline';
-    state.patternId = String(snap.patternId || '').trim();
-    if (!patternsForEngraving(state.engraving).some(p => p.id === state.patternId)) {
-      state.patternId = '';
-    }
     state.led = LED_COLORS.some(c => c.id === snap.led) ? snap.led : 'blue';
-    state.fontSize = clamp(snap.fontSize, 34, 92);
+    state.fontSize = clamp(snap.fontSize, 18, 180);
+    state.textScaleX = clamp(Number(snap.textScaleX || 1), .55, 1.4);
     state.xPct = clamp(snap.xPct, 0, 100);
     state.yPct = clamp(snap.yPct, 0, 100);
     state.showSafe = snap.showSafe !== false;
+
+    if (Array.isArray(snap.patterns)) {
+      state.patterns = snap.patterns
+        .map(sanitizePatternInstance)
+        .filter(Boolean)
+        .filter(p => patternsForEngraving(state.engraving).some(def => def.id === p.patternId));
+    } else if (snap.patternId && patternsForEngraving(state.engraving).some(def => def.id === snap.patternId)) {
+      state.patterns = [createPatternInstance(String(snap.patternId), 0)];
+    } else {
+      state.patterns = [];
+    }
+
+    selectedObject = { type:'text', id:null };
     return true;
   }
+
 
   function initializeEditSession() {
     if (!EDIT_DESIGN_ID) {
@@ -298,8 +350,8 @@
     return mode === 'fill' ? FILL_PATTERNS : OUTLINE_PATTERNS;
   }
 
-  function selectedPattern() {
-    return patternsForEngraving().find(p => p.id === state.patternId) || null;
+  function patternDef(patternId, mode = state.engraving) {
+    return patternsForEngraving(mode).find(p => p.id === patternId) || null;
   }
 
   function patternUrl(def) {
@@ -307,22 +359,53 @@
     return encodeURI('./' + def.folder + '/' + def.file);
   }
 
-  function textSafeArea() {
-    if (!selectedPattern()) return SAFE;
-    const x = 150;
+  function makePatternInstanceId() {
+    return 'p-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  }
+
+  function createPatternInstance(patternId, order = state.patterns.length) {
+    const size = 76;
+    const step = (order % 6) * 12;
     return {
-      x,
-      y: SAFE.y,
-      width: SAFE.x + SAFE.width - x,
-      height: SAFE.height
+      id: makePatternInstanceId(),
+      patternId,
+      x: clamp(SAFE.x + 6 + step, SAFE.x, SAFE.x + SAFE.width - size),
+      y: clamp(SAFE.y + 8 + (order % 3) * 6, SAFE.y, SAFE.y + SAFE.height - size),
+      w: size,
+      h: size,
+      flipX: false
     };
   }
 
-  function targetCenter() {
-    const area = textSafeArea();
+  function sanitizePatternInstance(raw) {
+    if (!raw || !raw.patternId) return null;
+    const w = clamp(Number(raw.w || 76), 18, SAFE.width);
+    const h = clamp(Number(raw.h || 76), 18, SAFE.height);
     return {
-      x: area.x + area.width * state.xPct / 100,
-      y: area.y + area.height * state.yPct / 100
+      id: String(raw.id || makePatternInstanceId()),
+      patternId: String(raw.patternId),
+      x: clamp(Number(raw.x || SAFE.x), SAFE.x, SAFE.x + SAFE.width - w),
+      y: clamp(Number(raw.y || SAFE.y), SAFE.y, SAFE.y + SAFE.height - h),
+      w,
+      h,
+      flipX: !!raw.flipX
+    };
+  }
+
+  function selectedPatternInstance() {
+    if (selectedObject.type !== 'pattern') return null;
+    return state.patterns.find(p => p.id === selectedObject.id) || null;
+  }
+
+  function selectedPatternDefinition() {
+    const inst = selectedPatternInstance();
+    return inst ? patternDef(inst.patternId) : null;
+  }
+
+  function targetCenter() {
+    return {
+      x: SAFE.x + SAFE.width * state.xPct / 100,
+      y: SAFE.y + SAFE.height * state.yPct / 100
     };
   }
 
@@ -330,26 +413,74 @@
     if (!els.patternGrid) return;
 
     const patterns = patternsForEngraving();
-    if (!patterns.some(p => p.id === state.patternId)) {
-      state.patternId = '';
-    }
-
-    const emptyButton =
-      '<button type="button" class="pattern-choice' + (!state.patternId ? ' active' : '') +
-      '" data-pattern="" aria-label="Nincs minta"><span class="pattern-empty">Nincs minta</span></button>';
 
     const buttons = patterns.map(p =>
-      '<button type="button" class="pattern-choice' + (p.id === state.patternId ? ' active' : '') +
-      '" data-pattern="' + p.id + '" aria-label="' + p.label + '">' +
+      '<button type="button" class="pattern-choice" data-pattern="' + p.id + '" aria-label="' + p.label + ' hozzáadása">' +
       '<img src="' + patternUrl(p) + '" alt="" loading="lazy" />' +
-      '<span>' + p.label + '</span></button>'
+      '<span>' + p.label + '</span><small>+ hozzáadás</small></button>'
     ).join('');
 
-    els.patternGrid.innerHTML = emptyButton + buttons;
+    els.patternGrid.innerHTML = buttons;
+
+    const selected = selectedPatternDefinition();
     if (els.selectedPatternLabel) {
-      els.selectedPatternLabel.textContent = selectedPattern()?.label || 'Nincs minta';
+      els.selectedPatternLabel.textContent = selected
+        ? selected.label + ' • ' + state.patterns.length + ' minta a terven'
+        : (state.patterns.length ? state.patterns.length + ' minta a terven' : 'Nincs minta');
     }
+
+    updatePatternActionButtons();
   }
+
+  function updatePatternActionButtons() {
+    const active = !!selectedPatternInstance();
+    [els.mirrorPatternButton, els.duplicatePatternButton, els.deletePatternButton].forEach(btn => {
+      if (btn) btn.disabled = !active;
+    });
+    if (els.clearPatternsButton) els.clearPatternsButton.disabled = state.patterns.length === 0;
+  }
+
+  function addPattern(patternId) {
+    if (!patternDef(patternId)) return;
+    const inst = createPatternInstance(patternId, state.patterns.length);
+    state.patterns.push(inst);
+    selectedObject = { type:'pattern', id:inst.id };
+    renderPatternChoices();
+    render();
+    setStatus('Minta hozzáadva. Húzd a táblán a helyére, a sarkokkal méretezheted.', 'good');
+  }
+
+  function duplicateSelectedPattern() {
+    const src = selectedPatternInstance();
+    if (!src) return;
+    const copy = sanitizePatternInstance({
+      ...src,
+      id: makePatternInstanceId(),
+      x: src.x + 12,
+      y: src.y + 8
+    });
+    state.patterns.push(copy);
+    selectedObject = { type:'pattern', id:copy.id };
+    renderPatternChoices();
+    render();
+  }
+
+  function deleteSelectedPattern() {
+    const inst = selectedPatternInstance();
+    if (!inst) return;
+    state.patterns = state.patterns.filter(p => p.id !== inst.id);
+    selectedObject = { type:'text', id:null };
+    renderPatternChoices();
+    render();
+  }
+
+  function clearAllPatterns() {
+    state.patterns = [];
+    selectedObject = { type:'text', id:null };
+    renderPatternChoices();
+    render();
+  }
+
 
   function previewBaseline() {
     const p = targetCenter();
@@ -363,7 +494,7 @@
 
   function setupControls() {
     els.fontSelect.innerHTML = FONTS.map(f =>
-      '<option value="' + f.id + '">' + f.label + (f.placeholder ? ' (fontfájl szükséges)' : '') + '</option>'
+      '<option value="' + f.id + '">' + f.label + (f.optionalFile ? ' (fontfájl szükséges a gyártási görbéhez)' : '') + '</option>'
     ).join('');
     els.fontSelect.value = state.fontId;
     renderPatternChoices();
@@ -374,6 +505,7 @@
 
     els.textInput.value = state.text;
     els.sizeRange.value = state.fontSize;
+    els.widthRange.value = Math.round(state.textScaleX * 100);
     els.xRange.value = state.xPct;
     els.yRange.value = state.yPct;
     els.designId.textContent = state.id;
@@ -384,13 +516,13 @@
 
     els.textInput.addEventListener('input', () => {
       state.text = cleanText(els.textInput.value) || 'PETI';
-      render();
+      selectedObject = { type:'text', id:null };
       autoFit(false);
     });
 
     els.fontSelect.addEventListener('change', () => {
       state.fontId = els.fontSelect.value;
-      render();
+      selectedObject = { type:'text', id:null };
       autoFit(false);
     });
 
@@ -398,26 +530,43 @@
       const button = e.target.closest('[data-engraving]');
       if (!button) return;
 
-      const previousPatternId = state.patternId;
-      state.engraving = button.dataset.engraving;
+      const nextMode = button.dataset.engraving;
+      if (nextMode === state.engraving) return;
 
-      state.patternId = patternsForEngraving().some(p => p.id === previousPatternId)
-        ? previousPatternId
-        : '';
+      state.engraving = nextMode;
+
+      const available = new Set(patternsForEngraving().map(p => p.id));
+      const before = state.patterns.length;
+      state.patterns = state.patterns.filter(p => available.has(p.patternId));
+
+      if (selectedObject.type === 'pattern' && !state.patterns.some(p => p.id === selectedObject.id)) {
+        selectedObject = { type:'text', id:null };
+      }
 
       renderPatternChoices();
       render();
-      autoFit(false);
+
+      if (state.patterns.length < before) {
+        setStatus('A másik gravírozási módban nem létező mintákat eltávolítottam.', 'warn');
+      }
     });
 
     els.patternGrid?.addEventListener('click', e => {
       const button = e.target.closest('[data-pattern]');
       if (!button) return;
-      state.patternId = button.dataset.pattern || '';
-      renderPatternChoices();
-      render();
-      autoFit(false);
+      addPattern(button.dataset.pattern || '');
     });
+
+    els.mirrorPatternButton?.addEventListener('click', () => {
+      const inst = selectedPatternInstance();
+      if (!inst) return;
+      inst.flipX = !inst.flipX;
+      render();
+    });
+
+    els.duplicatePatternButton?.addEventListener('click', duplicateSelectedPattern);
+    els.deletePatternButton?.addEventListener('click', deleteSelectedPattern);
+    els.clearPatternsButton?.addEventListener('click', clearAllPatterns);
 
     els.colorGrid.addEventListener('click', e => {
       const button = e.target.closest('[data-color]');
@@ -428,20 +577,30 @@
 
     els.sizeRange.addEventListener('input', () => {
       state.fontSize = Number(els.sizeRange.value);
+      selectedObject = { type:'text', id:null };
       render();
-      keepInsideSafeZone();
+      constrainTextToSafeZone(true);
+    });
+
+    els.widthRange.addEventListener('input', () => {
+      state.textScaleX = Number(els.widthRange.value) / 100;
+      selectedObject = { type:'text', id:null };
+      render();
+      constrainTextToSafeZone(true);
     });
 
     els.xRange.addEventListener('input', () => {
       state.xPct = Number(els.xRange.value);
+      selectedObject = { type:'text', id:null };
       render();
-      keepInsideSafeZone();
+      constrainTextToSafeZone(false);
     });
 
     els.yRange.addEventListener('input', () => {
       state.yPct = Number(els.yRange.value);
+      selectedObject = { type:'text', id:null };
       render();
-      keepInsideSafeZone();
+      constrainTextToSafeZone(false);
     });
 
     els.safeZoneToggle.addEventListener('change', () => {
@@ -455,6 +614,7 @@
     els.resetButton.addEventListener('click', reset);
     els.downloadZip.addEventListener('click', openSendModal);
   }
+
 
   function centerText() {
     state.xPct = 50;
@@ -501,49 +661,86 @@
     });
   }
 
+  async function buildPatternPreviewNode(inst, paint) {
+    const def = patternDef(inst.patternId);
+    if (!def) return null;
+
+    const raw = await loadPatternSvg(def);
+    if (!raw) return null;
+
+    const parsed = new DOMParser().parseFromString(raw, 'image/svg+xml');
+    const source = parsed.documentElement;
+    if (!source || source.nodeName.toLowerCase() !== 'svg') return null;
+
+    const NS = 'http://www.w3.org/2000/svg';
+    const group = document.createElementNS(NS, 'g');
+    group.setAttribute('class', 'pattern-instance');
+    group.dataset.patternInstance = inst.id;
+    group.setAttribute(
+      'transform',
+      inst.flipX
+        ? 'translate(' + (inst.x + inst.w).toFixed(3) + ' ' + inst.y.toFixed(3) + ') scale(-1 1)'
+        : 'translate(' + inst.x.toFixed(3) + ' ' + inst.y.toFixed(3) + ')'
+    );
+
+    const nested = document.createElementNS(NS, 'svg');
+    nested.setAttribute('x', '0');
+    nested.setAttribute('y', '0');
+    nested.setAttribute('width', inst.w.toFixed(3));
+    nested.setAttribute('height', inst.h.toFixed(3));
+    nested.setAttribute('viewBox', source.getAttribute('viewBox') || '0 0 100 100');
+    nested.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    nested.setAttribute('overflow', 'visible');
+    nested.setAttribute('filter', 'url(#glow)');
+
+    Array.from(source.childNodes).forEach(node => {
+      nested.appendChild(document.importNode(node, true));
+    });
+
+    nested.querySelectorAll('metadata,script,foreignObject').forEach(node => node.remove());
+    recolorSvgNode(nested, paint);
+    group.appendChild(nested);
+
+    const hit = document.createElementNS(NS, 'rect');
+    hit.setAttribute('class', 'pattern-hit');
+    hit.setAttribute('x', '0');
+    hit.setAttribute('y', '0');
+    hit.setAttribute('width', inst.w.toFixed(3));
+    hit.setAttribute('height', inst.h.toFixed(3));
+    hit.setAttribute('fill', 'transparent');
+    hit.setAttribute('pointer-events', 'all');
+    group.appendChild(hit);
+
+    return group;
+  }
+
   async function updatePatternPreview(paint) {
     if (!els.patternLayer) return;
 
     const token = ++patternRenderToken;
     els.patternLayer.replaceChildren();
 
-    const def = selectedPattern();
-    if (!def) return;
+    const nodes = await Promise.all(
+      state.patterns.map(inst => buildPatternPreviewNode(inst, paint))
+    );
 
-    try {
-      const raw = await loadPatternSvg(def);
-      if (token !== patternRenderToken || !raw) return;
+    if (token !== patternRenderToken) return;
 
-      const parsed = new DOMParser().parseFromString(raw, 'image/svg+xml');
-      const source = parsed.documentElement;
-      if (!source || source.nodeName.toLowerCase() !== 'svg') return;
+    nodes.filter(Boolean).forEach(node => els.patternLayer.appendChild(node));
+    updateSelectionOverlay();
+  }
 
-      const NS = 'http://www.w3.org/2000/svg';
-      const nested = document.createElementNS(NS, 'svg');
-      nested.setAttribute('x', String(PATTERN_BOX.x));
-      nested.setAttribute('y', String(PATTERN_BOX.y));
-      nested.setAttribute('width', String(PATTERN_BOX.width));
-      nested.setAttribute('height', String(PATTERN_BOX.height));
-      nested.setAttribute('viewBox', source.getAttribute('viewBox') || '0 0 100 100');
-      nested.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-      nested.setAttribute('overflow', 'visible');
-      nested.setAttribute('pointer-events', 'none');
-      nested.setAttribute('filter', 'url(#glow)');
-      nested.dataset.patternId = def.id;
+  function previewBaseline() {
+    const p = targetCenter();
+    return { x: p.x, y: p.y + state.fontSize * 0.28 };
+  }
 
-      Array.from(source.childNodes).forEach(node => {
-        nested.appendChild(document.importNode(node, true));
-      });
-
-      nested.querySelectorAll('metadata,script,foreignObject').forEach(node => node.remove());
-      recolorSvgNode(nested, paint);
-
-      if (token === patternRenderToken) {
-        els.patternLayer.appendChild(nested);
-      }
-    } catch (error) {
-      console.error(error);
-    }
+  function applyTextTransform() {
+    const center = targetCenter();
+    els.previewText.setAttribute(
+      'transform',
+      'translate(' + center.x.toFixed(3) + ' 0) scale(' + state.textScaleX.toFixed(4) + ' 1) translate(' + (-center.x).toFixed(3) + ' 0)'
+    );
   }
 
   function render() {
@@ -557,6 +754,7 @@
     els.previewText.style.fontFamily = font.family;
     els.previewText.style.fontWeight = String(font.weight);
     els.previewText.style.fontSize = state.fontSize + 'px';
+    applyTextTransform();
 
     const paint = state.led === 'rgb' ? 'url(#rgbGradient)' : led.value;
     updatePatternPreview(paint);
@@ -564,38 +762,33 @@
     if (state.engraving === 'outline') {
       els.previewText.setAttribute('fill', 'transparent');
       els.previewText.setAttribute('stroke', paint);
-      els.previewText.setAttribute('stroke-width', Math.max(1.2, state.fontSize * 0.035).toFixed(2));
+      els.previewText.setAttribute('stroke-width', Math.max(1.0, state.fontSize * 0.028).toFixed(2));
       els.previewText.setAttribute('stroke-linejoin', 'round');
     } else {
       els.previewText.setAttribute('fill', paint);
       els.previewText.setAttribute('stroke', paint);
-      els.previewText.setAttribute('stroke-width', '0.6');
+      els.previewText.setAttribute('stroke-width', '0.55');
     }
 
     els.safeZone.style.display = state.showSafe ? '' : 'none';
     els.sizeOutput.textContent = Math.round(state.fontSize) + ' mm';
+    els.widthOutput.textContent = Math.round(state.textScaleX * 100) + '%';
     els.xOutput.textContent = Math.round(state.xPct) + '%';
     els.yOutput.textContent = Math.round(state.yPct) + '%';
     els.sizeRange.value = state.fontSize;
+    els.widthRange.value = Math.round(state.textScaleX * 100);
     els.xRange.value = state.xPct;
     els.yRange.value = state.yPct;
 
     $$('#engravingControl [data-engraving]').forEach(btn =>
       btn.classList.toggle('active', btn.dataset.engraving === state.engraving)
     );
-    $('#colorGrid [data-color]').forEach(btn => {
+
+    $$('#colorGrid [data-color]').forEach(btn => {
       const active = btn.dataset.color === state.led;
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-checked', active ? 'true' : 'false');
     });
-
-    $('#patternGrid [data-pattern]').forEach(btn => {
-      btn.classList.toggle('active', (btn.dataset.pattern || '') === state.patternId);
-    });
-
-    if (els.selectedPatternLabel) {
-      els.selectedPatternLabel.textContent = selectedPattern()?.label || 'Nincs minta';
-    }
 
     els.selectedColorLabel.textContent = led.label;
     els.selectedPrice.textContent = formatHuf(led.price);
@@ -604,14 +797,19 @@
     els.footerColor.textContent = led.label;
     els.footerPrice.textContent = formatHuf(led.price);
 
-    if (font.placeholder) {
-      setStatus('A „' + font.label + '” előnézete helyettesítő betűtípussal jelenik meg. A pontos gyártási görbéhez ennek a fontfájljára is szükség lesz.', 'warn');
+    renderPatternChoices();
+
+    if (font.optionalFile) {
+      setStatus(
+        'A „' + font.label + '” előnézete a gép rendszerbetűjével készül. A pontos gyártási görbéhez a fontfájlt még fel kell tölteni a Betűtípus mappába.',
+        'warn'
+      );
     } else {
-      setStatus('A terv a megadott gyártási biztonsági zónán belül tartható.');
+      setStatus('A felirat és a minták a szaggatott gyártási területen belül mozgathatók.');
     }
 
     queueSnapshotSave();
-    updateDirectEditOverlay();
+    updateSelectionOverlay();
   }
 
 
@@ -623,33 +821,48 @@
     const point = svg.createSVGPoint();
     point.x = evt.clientX;
     point.y = evt.clientY;
-
     return point.matrixTransform(matrix.inverse());
   }
 
-  function removeDirectEditOverlay() {
-    els.designSvg.querySelector('.truck-selection-ui')?.remove();
+  function rawTextBox() {
+    try {
+      return els.previewText.getBBox();
+    } catch (_) {
+      return null;
+    }
   }
 
-  function updateDirectEditOverlay() {
-    removeDirectEditOverlay();
+  function textVisualBox() {
+    const box = rawTextBox();
+    if (!box) return null;
 
-    if (!previewSelectionVisible || !cleanText(state.text)) return;
+    const center = targetCenter();
+    return {
+      x: center.x + (box.x - center.x) * state.textScaleX,
+      y: box.y,
+      width: box.width * state.textScaleX,
+      height: box.height
+    };
+  }
 
-    let box;
-    try {
-      box = els.previewText.getBBox();
-    } catch (_) {
-      return;
+  function currentSelectionBox() {
+    if (selectedObject.type === 'pattern') {
+      const inst = selectedPatternInstance();
+      return inst ? { x:inst.x, y:inst.y, width:inst.w, height:inst.h } : null;
     }
 
+    return cleanText(state.text) ? textVisualBox() : null;
+  }
+
+  function updateSelectionOverlay() {
+    if (!els.selectionLayer) return;
+    els.selectionLayer.replaceChildren();
+
+    const box = currentSelectionBox();
     if (!box || !Number.isFinite(box.width) || !Number.isFinite(box.height)) return;
 
     const NS = 'http://www.w3.org/2000/svg';
-    const group = document.createElementNS(NS, 'g');
-    group.setAttribute('class', 'truck-selection-ui');
-
-    const pad = 5;
+    const pad = 1.8;
     const x = box.x - pad;
     const y = box.y - pad;
     const w = box.width + pad * 2;
@@ -661,136 +874,218 @@
     rect.setAttribute('y', y.toFixed(2));
     rect.setAttribute('width', w.toFixed(2));
     rect.setAttribute('height', h.toFixed(2));
-    rect.setAttribute('rx', '2');
-    group.appendChild(rect);
+    rect.setAttribute('rx', '1.5');
+    els.selectionLayer.appendChild(rect);
 
     [
       [x, y],
       [x + w, y],
       [x, y + h],
       [x + w, y + h]
-    ].forEach(function (coords) {
+    ].forEach(coords => {
       const handle = document.createElementNS(NS, 'circle');
       handle.setAttribute('class', 'truck-resize-handle');
       handle.setAttribute('cx', coords[0].toFixed(2));
       handle.setAttribute('cy', coords[1].toFixed(2));
-      handle.setAttribute('r', '4.3');
+      handle.setAttribute('r', '4.2');
 
-      handle.addEventListener('pointerdown', function (evt) {
+      handle.addEventListener('pointerdown', evt => {
         evt.preventDefault();
         evt.stopPropagation();
 
         const p = svgClientPoint(evt);
         if (!p) return;
 
-        const center = targetCenter();
-        const startDistance = Math.max(
-          1,
-          Math.hypot(
-            p.x - center.x,
-            p.y - center.y
-          )
-        );
+        const selection = currentSelectionBox();
+        if (!selection) return;
 
-        directEditInteraction = {
-          mode: 'resize',
-          pointerId: evt.pointerId,
-          startFontSize: state.fontSize,
-          startDistance: startDistance
-        };
+        const cx = selection.x + selection.width / 2;
+        const cy = selection.y + selection.height / 2;
+        const startDistance = Math.max(1, Math.hypot(p.x - cx, p.y - cy));
 
-        try {
-          els.designSvg.setPointerCapture(evt.pointerId);
-        } catch (_) {}
+        if (selectedObject.type === 'pattern') {
+          const inst = selectedPatternInstance();
+          if (!inst) return;
+
+          directEditInteraction = {
+            mode:'pattern-resize',
+            pointerId:evt.pointerId,
+            patternId:inst.id,
+            startDistance,
+            centerX:cx,
+            centerY:cy,
+            startW:inst.w,
+            startH:inst.h
+          };
+        } else {
+          directEditInteraction = {
+            mode:'text-resize',
+            pointerId:evt.pointerId,
+            startDistance,
+            centerX:cx,
+            centerY:cy,
+            startFontSize:state.fontSize
+          };
+        }
+
+        try { els.designSvg.setPointerCapture(evt.pointerId); } catch (_) {}
       });
 
-      group.appendChild(handle);
+      els.selectionLayer.appendChild(handle);
     });
-
-    els.designSvg.appendChild(group);
   }
 
   function startDirectTextDrag(evt) {
     evt.preventDefault();
     evt.stopPropagation();
 
-    previewSelectionVisible = true;
+    selectedObject = { type:'text', id:null };
 
     const p = svgClientPoint(evt);
     if (!p) return;
 
     directEditInteraction = {
-      mode: 'move',
-      pointerId: evt.pointerId,
-      startPoint: p,
-      startXPct: state.xPct,
-      startYPct: state.yPct
+      mode:'text-move',
+      pointerId:evt.pointerId,
+      startPoint:p,
+      startXPct:state.xPct,
+      startYPct:state.yPct
     };
 
     els.previewText.classList.add('dragging');
-
-    try {
-      els.designSvg.setPointerCapture(evt.pointerId);
-    } catch (_) {}
-
-    updateDirectEditOverlay();
+    try { els.designSvg.setPointerCapture(evt.pointerId); } catch (_) {}
+    updateSelectionOverlay();
   }
 
-  function moveDirectEdit(evt) {
-    if (
-      !directEditInteraction ||
-      directEditInteraction.pointerId !== evt.pointerId
-    ) {
-      return;
-    }
+  function startPatternDrag(evt) {
+    const group = evt.target.closest?.('[data-pattern-instance]');
+    if (!group) return;
 
     evt.preventDefault();
+    evt.stopPropagation();
+
+    const inst = state.patterns.find(p => p.id === group.dataset.patternInstance);
+    if (!inst) return;
+
+    selectedObject = { type:'pattern', id:inst.id };
+    renderPatternChoices();
 
     const p = svgClientPoint(evt);
     if (!p) return;
 
-    if (directEditInteraction.mode === 'move') {
+    directEditInteraction = {
+      mode:'pattern-move',
+      pointerId:evt.pointerId,
+      patternId:inst.id,
+      startPoint:p,
+      startX:inst.x,
+      startY:inst.y
+    };
+
+    try { els.designSvg.setPointerCapture(evt.pointerId); } catch (_) {}
+    updateSelectionOverlay();
+  }
+
+  function moveDirectEdit(evt) {
+    if (!directEditInteraction || directEditInteraction.pointerId !== evt.pointerId) return;
+
+    evt.preventDefault();
+    const p = svgClientPoint(evt);
+    if (!p) return;
+
+    if (directEditInteraction.mode === 'text-move') {
       const dx = p.x - directEditInteraction.startPoint.x;
       const dy = p.y - directEditInteraction.startPoint.y;
 
-      const area = textSafeArea();
-
       state.xPct = clamp(
-        directEditInteraction.startXPct +
-          dx / area.width * 100,
+        directEditInteraction.startXPct + dx / SAFE.width * 100,
         0,
         100
       );
 
       state.yPct = clamp(
-        directEditInteraction.startYPct +
-          dy / area.height * 100,
+        directEditInteraction.startYPct + dy / SAFE.height * 100,
         0,
         100
+      );
+
+      render();
+      constrainTextToSafeZone(false);
+      return;
+    }
+
+    if (directEditInteraction.mode === 'text-resize') {
+      const distance = Math.max(
+        1,
+        Math.hypot(
+          p.x - directEditInteraction.centerX,
+          p.y - directEditInteraction.centerY
+        )
+      );
+
+      const ratio = distance / directEditInteraction.startDistance;
+      state.fontSize = clamp(directEditInteraction.startFontSize * ratio, 18, 180);
+      render();
+      constrainTextToSafeZone(true);
+      return;
+    }
+
+    if (directEditInteraction.mode === 'pattern-move') {
+      const inst = state.patterns.find(x => x.id === directEditInteraction.patternId);
+      if (!inst) return;
+
+      const dx = p.x - directEditInteraction.startPoint.x;
+      const dy = p.y - directEditInteraction.startPoint.y;
+
+      inst.x = clamp(
+        directEditInteraction.startX + dx,
+        SAFE.x,
+        SAFE.x + SAFE.width - inst.w
+      );
+
+      inst.y = clamp(
+        directEditInteraction.startY + dy,
+        SAFE.y,
+        SAFE.y + SAFE.height - inst.h
       );
 
       render();
       return;
     }
 
-    if (directEditInteraction.mode === 'resize') {
-      const center = targetCenter();
+    if (directEditInteraction.mode === 'pattern-resize') {
+      const inst = state.patterns.find(x => x.id === directEditInteraction.patternId);
+      if (!inst) return;
+
       const distance = Math.max(
         1,
         Math.hypot(
-          p.x - center.x,
-          p.y - center.y
+          p.x - directEditInteraction.centerX,
+          p.y - directEditInteraction.centerY
         )
       );
 
-      const ratio =
-        distance /
-        directEditInteraction.startDistance;
+      let ratio = distance / directEditInteraction.startDistance;
+      ratio = Math.min(
+        ratio,
+        SAFE.width / directEditInteraction.startW,
+        SAFE.height / directEditInteraction.startH
+      );
 
-      state.fontSize = clamp(
-        directEditInteraction.startFontSize * ratio,
-        34,
-        92
+      const newW = clamp(directEditInteraction.startW * ratio, 18, SAFE.width);
+      const newH = clamp(directEditInteraction.startH * ratio, 18, SAFE.height);
+
+      inst.w = newW;
+      inst.h = newH;
+      inst.x = clamp(
+        directEditInteraction.centerX - newW / 2,
+        SAFE.x,
+        SAFE.x + SAFE.width - newW
+      );
+      inst.y = clamp(
+        directEditInteraction.centerY - newH / 2,
+        SAFE.y,
+        SAFE.y + SAFE.height - newH
       );
 
       render();
@@ -800,133 +1095,165 @@
   function endDirectEdit(evt) {
     if (!directEditInteraction) return;
 
-    try {
-      els.designSvg.releasePointerCapture(evt.pointerId);
-    } catch (_) {}
-
+    try { els.designSvg.releasePointerCapture(evt.pointerId); } catch (_) {}
     directEditInteraction = null;
     els.previewText.classList.remove('dragging');
 
-    keepInsideSafeZone();
+    constrainTextToSafeZone(true);
     queueSnapshotSave();
+    updateSelectionOverlay();
   }
 
   function setupDirectEditing() {
     els.previewText.style.pointerEvents = 'auto';
+    els.previewText.addEventListener('pointerdown', startDirectTextDrag);
+    els.patternLayer?.addEventListener('pointerdown', startPatternDrag);
 
-    els.previewText.addEventListener(
-      'pointerdown',
-      startDirectTextDrag
-    );
+    els.designSvg.addEventListener('pointermove', moveDirectEdit);
+    els.designSvg.addEventListener('pointerup', endDirectEdit);
+    els.designSvg.addEventListener('pointercancel', endDirectEdit);
 
-    els.designSvg.addEventListener(
-      'pointermove',
-      moveDirectEdit
-    );
-
-    els.designSvg.addEventListener(
-      'pointerup',
-      endDirectEdit
-    );
-
-    els.designSvg.addEventListener(
-      'pointercancel',
-      endDirectEdit
-    );
-
-    els.designSvg.addEventListener(
-      'pointerdown',
-      function (evt) {
-        if (
-          evt.target === els.designSvg ||
-          evt.target.classList.contains('board-bg') ||
-          evt.target.classList.contains('board-edge')
-        ) {
-          previewSelectionVisible = false;
-          updateDirectEditOverlay();
-        }
+    els.designSvg.addEventListener('pointerdown', evt => {
+      if (
+        evt.target === els.designSvg ||
+        evt.target.classList.contains('board-bg') ||
+        evt.target.classList.contains('board-edge') ||
+        evt.target.classList.contains('safe-zone')
+      ) {
+        selectedObject = { type:'text', id:null };
+        updateSelectionOverlay();
+        renderPatternChoices();
       }
-    );
+    });
 
-    els.previewText.addEventListener(
-      'click',
-      function () {
-        previewSelectionVisible = true;
-        updateDirectEditOverlay();
-      }
-    );
+    els.previewText.addEventListener('click', () => {
+      selectedObject = { type:'text', id:null };
+      updateSelectionOverlay();
+      renderPatternChoices();
+    });
   }
 
+
   function bbox() {
-    try { return els.previewText.getBBox(); } catch { return null; }
+    return textVisualBox();
   }
 
   function autoFit(showMessage = true) {
     state.xPct = 50;
     state.yPct = 50;
-    state.fontSize = Math.min(92, Math.max(34, state.fontSize));
+
     render();
 
     requestAnimationFrame(() => {
-      let attempts = 0;
-      const area = textSafeArea();
-      while (attempts++ < 80) {
-        const box = bbox();
-        if (!box) break;
-        if (box.width <= area.width - 4 && box.height <= area.height - 4) break;
-        state.fontSize = Math.max(34, state.fontSize - 1);
-        els.previewText.style.fontSize = state.fontSize + 'px';
+      let box = textVisualBox();
+      if (!box) return;
+
+      const maxW = SAFE.width - 3;
+      const maxH = SAFE.height - 3;
+
+      if (box.width > maxW || box.height > maxH) {
+        const factor = Math.min(maxW / box.width, maxH / box.height);
+        state.fontSize = clamp(state.fontSize * factor, 18, 180);
       }
+
       render();
-      keepInsideSafeZone();
-      if (showMessage) setStatus('A felirat automatikusan a gyártási területre lett illesztve.', 'good');
+      constrainTextToSafeZone(true);
+
+      if (showMessage) {
+        setStatus('A felirat a teljes szaggatott gyártási területre lett illesztve.', 'good');
+      }
     });
   }
 
-  function keepInsideSafeZone() {
+  function constrainTextToSafeZone(allowShrink) {
     requestAnimationFrame(() => {
-      const box = bbox();
+      let box = textVisualBox();
       if (!box) return;
 
-      const area = textSafeArea();
-
-      if (box.width > area.width - 2 || box.height > area.height - 2) {
-        autoFit(false);
-        return;
+      if (
+        allowShrink &&
+        (box.width > SAFE.width - 2 || box.height > SAFE.height - 2)
+      ) {
+        const factor = Math.min(
+          (SAFE.width - 2) / box.width,
+          (SAFE.height - 2) / box.height
+        );
+        state.fontSize = clamp(state.fontSize * factor, 18, 180);
+        render();
+        box = textVisualBox();
+        if (!box) return;
       }
 
-      let dx = 0, dy = 0;
-      if (box.x < area.x) dx = area.x - box.x;
-      if (box.x + box.width > area.x + area.width) dx = area.x + area.width - (box.x + box.width);
-      if (box.y < area.y) dy = area.y - box.y;
-      if (box.y + box.height > area.y + area.height) dy = area.y + area.height - (box.y + box.height);
+      let dx = 0;
+      let dy = 0;
 
-      if (Math.abs(dx) > 0.1) state.xPct = clamp(state.xPct + dx / area.width * 100, 0, 100);
-      if (Math.abs(dy) > 0.1) state.yPct = clamp(state.yPct + dy / area.height * 100, 0, 100);
-      if (dx || dy) render();
+      if (box.x < SAFE.x) dx = SAFE.x - box.x;
+      if (box.x + box.width > SAFE.x + SAFE.width) {
+        dx = SAFE.x + SAFE.width - (box.x + box.width);
+      }
+      if (box.y < SAFE.y) dy = SAFE.y - box.y;
+      if (box.y + box.height > SAFE.y + SAFE.height) {
+        dy = SAFE.y + SAFE.height - (box.y + box.height);
+      }
+
+      if (Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) {
+        state.xPct = clamp(state.xPct + dx / SAFE.width * 100, 0, 100);
+        state.yPct = clamp(state.yPct + dy / SAFE.height * 100, 0, 100);
+        render();
+      } else {
+        updateSelectionOverlay();
+      }
     });
   }
 
   function reset() {
     Object.assign(state, {
-      text:'PETI', fontId:'bahnschrift', engraving:'outline', patternId:'', led:'blue',
-      fontSize:68, xPct:50, yPct:50, showSafe:true
+      text:'PETI',
+      fontId:'bahnschrift',
+      engraving:'outline',
+      patterns:[],
+      led:'blue',
+      fontSize:68,
+      textScaleX:1,
+      xPct:50,
+      yPct:50,
+      showSafe:true
     });
+
+    selectedObject = { type:'text', id:null };
     els.textInput.value = state.text;
     els.fontSelect.value = state.fontId;
-    renderPatternChoices();
     els.safeZoneToggle.checked = true;
+    renderPatternChoices();
     render();
     autoFit(false);
     setStatus('Alaphelyzet visszaállítva.', 'good');
   }
 
+
   function loadFont(def) {
-    if (!def.url || !window.opentype) return Promise.resolve(null);
+    if (!def || !window.opentype) return Promise.resolve(null);
     if (fontCache.has(def.id)) return fontCache.get(def.id);
+
+    const urls = Array.isArray(def.urls) ? def.urls.slice() : (def.url ? [def.url] : []);
+
     const promise = new Promise(resolve => {
-      window.opentype.load(def.url, (err, font) => resolve(err ? null : font));
+      const tryNext = () => {
+        const url = urls.shift();
+        if (!url) {
+          resolve(null);
+          return;
+        }
+
+        window.opentype.load(url, (err, font) => {
+          if (!err && font) resolve(font);
+          else tryNext();
+        });
+      };
+
+      tryNext();
     });
+
     fontCache.set(def.id, promise);
     return promise;
   }
@@ -943,47 +1270,61 @@
 
     if (!font) {
       const pos = previewBaseline();
-      return '<text x="' + pos.x.toFixed(2) + '" y="' + pos.y.toFixed(2) + '" text-anchor="middle" font-family="' +
+      return '<g transform="translate(' + center.x.toFixed(3) + ' 0) scale(' +
+        state.textScaleX.toFixed(4) + ' 1) translate(' + (-center.x).toFixed(3) + ' 0)">' +
+        '<text x="' + pos.x.toFixed(2) + '" y="' + pos.y.toFixed(2) + '" text-anchor="middle" font-family="' +
         escapeXml(fontDef.family.split(',')[0].replace(/["']/g,'')) + '" font-size="' + state.fontSize +
-        '" font-weight="' + fontDef.weight + '" ' + paintAttrs + '>' + escapeXml(text) + '</text>';
+        '" font-weight="' + fontDef.weight + '" ' + paintAttrs + '>' + escapeXml(text) + '</text></g>';
     }
 
     const path = font.getPath(text, 0, 0, state.fontSize, { kerning:true });
     const box = path.getBoundingBox();
     const cx = (box.x1 + box.x2) / 2;
     const cy = (box.y1 + box.y2) / 2;
-    const tx = center.x - cx;
-    const ty = center.y - cy;
-    return '<g transform="translate(' + tx.toFixed(3) + ' ' + ty.toFixed(3) + ')"><path d="' +
-      path.toPathData(3) + '" ' + paintAttrs + '/></g>';
+
+    return '<g transform="translate(' + center.x.toFixed(3) + ' ' + center.y.toFixed(3) + ') scale(' +
+      state.textScaleX.toFixed(4) + ' 1) translate(' + (-cx).toFixed(3) + ' ' + (-cy).toFixed(3) + ')">' +
+      '<path d="' + path.toPathData(3) + '" ' + paintAttrs + '/></g>';
   }
 
   async function productionPatternMarkup() {
-    const def = selectedPattern();
-    if (!def) return '';
+    const parts = [];
 
-    const raw = await loadPatternSvg(def);
-    const parsed = new DOMParser().parseFromString(raw, 'image/svg+xml');
-    const source = parsed.documentElement;
+    for (const inst of state.patterns) {
+      const def = patternDef(inst.patternId);
+      if (!def) continue;
 
-    if (!source || source.nodeName.toLowerCase() !== 'svg') {
-      throw new Error('A kiválasztott minta SVG-je hibás: ' + def.label);
+      const raw = await loadPatternSvg(def);
+      const parsed = new DOMParser().parseFromString(raw, 'image/svg+xml');
+      const source = parsed.documentElement;
+
+      if (!source || source.nodeName.toLowerCase() !== 'svg') {
+        throw new Error('A kiválasztott minta SVG-je hibás: ' + def.label);
+      }
+
+      source.querySelectorAll('metadata,script,foreignObject').forEach(node => node.remove());
+      recolorSvgNode(source, '#000000');
+
+      const viewBox = source.getAttribute('viewBox') || '0 0 100 100';
+      const inner = Array.from(source.childNodes)
+        .map(node => new XMLSerializer().serializeToString(node))
+        .join('');
+
+      const transform = inst.flipX
+        ? 'translate(' + (inst.x + inst.w).toFixed(3) + ' ' + inst.y.toFixed(3) + ') scale(-1 1)'
+        : 'translate(' + inst.x.toFixed(3) + ' ' + inst.y.toFixed(3) + ')';
+
+      parts.push(
+        '<g transform="' + transform + '" data-role="minta" data-pattern="' + escapeXml(def.label) + '">' +
+        '<svg x="0" y="0" width="' + inst.w.toFixed(3) + '" height="' + inst.h.toFixed(3) +
+        '" viewBox="' + escapeXml(viewBox) + '" preserveAspectRatio="xMidYMid meet" overflow="visible">' +
+        inner + '</svg></g>'
+      );
     }
 
-    source.querySelectorAll('metadata,script,foreignObject').forEach(node => node.remove());
-    recolorSvgNode(source, '#000000');
-
-    const viewBox = source.getAttribute('viewBox') || '0 0 100 100';
-    const inner = Array.from(source.childNodes)
-      .map(node => new XMLSerializer().serializeToString(node))
-      .join('');
-
-    return '<svg x="' + PATTERN_BOX.x + '" y="' + PATTERN_BOX.y +
-      '" width="' + PATTERN_BOX.width + '" height="' + PATTERN_BOX.height +
-      '" viewBox="' + escapeXml(viewBox) +
-      '" preserveAspectRatio="xMidYMid meet" overflow="visible" data-role="minta" data-pattern="' +
-      escapeXml(def.label) + '">' + inner + '</svg>';
+    return parts.join('\n  ');
   }
+
 
   async function serializeProductionSvg() {
     const textMarkup = await productionTextMarkup();
@@ -996,7 +1337,7 @@
       escapeXml(state.engraving === 'outline' ? 'Kontúr gravírozás' : 'Telibe gravírozott') + '">\n' +
       '  <!-- Lakás Dekor – Kamionos LED tábla -->\n' +
       '  <!-- Tervazonosító: ' + escapeXml(state.id) + ' -->\n' +
-      '  <!-- Gyártási terület: bal/jobb 50 mm, felül 14 mm, alul 5 mm -->' + fallbackNote + '\n' +
+      '  <!-- Gyártási terület: bal/jobb 50 mm, felül 14 mm, alul 5 mm -->\n' +
       '  <rect x="0.2" y="0.2" width="489.6" height="119.6" fill="none" stroke="#000000" stroke-width="0.4" data-role="tabla-kontur"/>\n' +
       (patternMarkup ? '  ' + patternMarkup + '\n' : '') +
       '  ' + textMarkup + '\n' +
@@ -1006,7 +1347,7 @@
   function previewSvgString() {
     const clone = els.designSvg.cloneNode(true);
     clone.querySelector('#safeZone')?.remove();
-    clone.querySelector('.truck-selection-ui')?.remove();
+    clone.querySelector('#selectionLayer')?.remove();
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     clone.setAttribute('width', '1470');
     clone.setAttribute('height', '360');
@@ -1066,8 +1407,14 @@
       'Felirat: ' + (state.text || '—'),
       'Méret: 49 × 12 cm (490 × 120 mm)',
       'Betűtípus: ' + selectedFont().label,
+      'Betűszélesség: ' + Math.round(state.textScaleX * 100) + '%',
       'Gravírozás: ' + (state.engraving === 'outline' ? 'Kontúr gravírozás' : 'Telibe gravírozott'),
-      'Minta: ' + (selectedPattern()?.label || 'Nincs minta'),
+      'Minták: ' + (state.patterns.length
+        ? state.patterns.map(p => {
+            const d = patternDef(p.patternId);
+            return (d ? d.label : p.patternId) + (p.flipX ? ' (tükrözve)' : '');
+          }).join(', ')
+        : 'Nincs minta'),
       'LED szín: ' + selectedLed().label,
       'Ár: ' + formatHuf(selectedLed().price),
       'Gyártási margók: bal 50 mm, jobb 50 mm, felül 14 mm, alul 5 mm'
@@ -1155,8 +1502,14 @@
       fd.append('tervazonosito', designId);
       fd.append('felirat', state.text || '—');
       fd.append('betutipus', selectedFont().label);
+      fd.append('betuszelesseg', Math.round(state.textScaleX * 100) + '%');
       fd.append('gravirozas', state.engraving === 'outline' ? 'Kontúr gravírozás' : 'Telibe gravírozott');
-      fd.append('minta', selectedPattern()?.label || 'Nincs minta');
+      fd.append('mintak', state.patterns.length
+        ? state.patterns.map(p => {
+            const d = patternDef(p.patternId);
+            return (d ? d.label : p.patternId) + (p.flipX ? ' (tükrözve)' : '');
+          }).join(', ')
+        : 'Nincs minta');
       fd.append('led_szin', selectedLed().label);
       fd.append('meret', '49 × 12 cm');
       fd.append('ar', formatHuf(selectedLed().price));
@@ -1212,7 +1565,7 @@
     url.searchParams.set('kamionnev', state.text);
     url.searchParams.set('kamionfont', state.fontId);
     url.searchParams.set('kamiongrav', state.engraving);
-    url.searchParams.set('kamionminta', state.patternId || '');
+    url.searchParams.set('kamionminta', state.patterns.map(p => p.patternId).join(','));
     url.searchParams.set('kamionled', state.led);
     url.searchParams.set('kamionar', String(selectedLed().price));
     navigateBackToShop(url.toString());

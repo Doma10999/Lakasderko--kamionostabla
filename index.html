@@ -51,9 +51,15 @@
         <div class="section-body">
           <div id="patternGrid" class="pattern-grid" role="radiogroup" aria-label="Minta választása"></div>
           <div class="summary-grid single-summary">
-            <div><span>Kiválasztott minta</span><strong id="selectedPatternLabel">Nincs minta</strong></div>
+            <div><span>Kijelölt / felrakott minták</span><strong id="selectedPatternLabel">Nincs minta</strong></div>
           </div>
-          <div class="hint compact">A minták automatikusan a kiválasztott gravírozáshoz igazodnak: kontúr módban csak a kontúr, telibe módban csak a telibe gravírozott minták jelennek meg.</div>
+          <div class="pattern-actions">
+            <button id="mirrorPatternButton" class="ghost small" type="button" disabled>Tükrözés</button>
+            <button id="duplicatePatternButton" class="ghost small" type="button" disabled>Másolat</button>
+            <button id="deletePatternButton" class="ghost small danger-button" type="button" disabled>Törlés</button>
+            <button id="clearPatternsButton" class="ghost small" type="button" disabled>Összes törlése</button>
+          </div>
+          <div class="hint compact">Egy mintára kattintva hozzáadod a táblához. Több mintát is feltehetsz. A táblán húzással mozgathatod, a sarkokkal méretezheted, a kijelölt mintát pedig tükrözheted.</div>
         </div>
       </section>
 
@@ -73,8 +79,12 @@
         <button class="section-title" type="button" data-section-toggle><span>05</span> ELRENDEZÉS <b>⌄</b></button>
         <div class="section-body">
           <label>Betűméret <span id="sizeOutput">68 mm</span>
-            <input id="sizeRange" type="range" min="34" max="92" value="68" step="1" />
+            <input id="sizeRange" type="range" min="18" max="180" value="68" step="1" />
           </label>
+          <label>Betűk szélessége <span id="widthOutput">100%</span>
+            <input id="widthRange" type="range" min="55" max="140" value="100" step="1" />
+          </label>
+          <div class="hint compact">Hosszabb feliratnál 100% alá húzva keskenyítheted a betűket. A felirat maximálisan a szaggatott gyártási terület széléig növelhető.</div>
           <label>Vízszintes pozíció <span id="xOutput">50%</span>
             <input id="xRange" type="range" min="0" max="100" value="50" step="1" />
           </label>
@@ -140,8 +150,9 @@
           <rect class="board-bg" x="0" y="0" width="490" height="120" rx="2"/>
           <rect class="board-edge" x="2" y="2" width="486" height="116" rx="2"/>
           <rect id="safeZone" class="safe-zone" x="50" y="14" width="390" height="101" rx="1"/>
-          <g id="patternLayer" aria-hidden="true"></g>
+          <g id="patternLayer"></g>
           <text id="previewText" x="245" y="75" text-anchor="middle">PETI</text>
+          <g id="selectionLayer" class="selection-layer"></g>
         </svg>
         <div class="viewer-note">A felirat automatikusan a megadott gyártási területen belül marad.</div>
         <div id="loading" class="loading hidden"><div class="spinner"></div><span>Terv készítése…</span></div>
