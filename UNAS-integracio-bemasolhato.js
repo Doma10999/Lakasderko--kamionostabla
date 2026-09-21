@@ -2,379 +2,287 @@
   'use strict';
 
   /*
-    LAKÁS DEKOR – KAMIONOS LED TÁBLA / UNAS
-    V6 – stabil Tervezés gomb + natív LED/Gravírozás mezők biztos elrejtése
+   * LAKÁS DEKOR – KAMIONOS LED TÁBLA / UNAS
+   * V8 ES5 – külön kamionos integráció
+   *
+   * Csak ezen az oldalon fut:
+   * /Tervezd-meg-sajatodat
+   *
+   * Cikkszám: FL340481
+   * Tervező: https://lakasderko--kamionostabla.lakasdekor.workers.dev/
+   *
+   * FONTOS:
+   * - body end
+   * - <script> tagek nélkül kell bemásolni
+   * - a házszámtábla scripthez nem nyúl
+   */
 
-    FONTOS:
-    - UNAS beszúrás: body end
-    - MINDEN OLDALON legyen beszúrva
-    - Termék: /Tervezd-meg-sajatodat
-    - Cikkszám: FL340481
-    - Natív UNAS szövegparaméter: Tervazonosító
-    - Elsődlegesen a korábbi globális paraméterazonosítót keressük: 8849701
-    - LED színe és Gravírozás valódi UNAS választható tulajdonság marad.
-      A script beállítja őket, majd csak vizuálisan rejti el.
-  */
-
-  const CFG = {
-    version: '20260921-kamion-v6-ui-fix',
+  var CFG = {
+    version: '20260921-kamion-v8-es5',
     productPath: '/Tervezd-meg-sajatodat',
-    productNameRx: /tervezd\s+meg\s+saj[aá]todat/i,
-    productSkuRx: /FL340481/i,
     designerUrl: 'https://lakasderko--kamionostabla.lakasdekor.workers.dev/',
-    storageKey: 'lakasDekorKamionosLedTervV3',
-    nativeParamId: '8849701',
-    nativeParamLabel: 'Tervazonosító',
-    ledOptions: {
+    returnUrl: 'https://falmatrica-lakasdekor.hu/Tervezd-meg-sajatodat',
+    designParameterId: '8849701',
+    standardPrice: 8500,
+    rgbPrice: 11150,
+    led: {
       blue: 'Kék',
       green: 'Zöld',
       red: 'Piros',
       white: 'Fehér',
       rgb: 'RGB'
     },
-    engravingOptions: {
+    engraving: {
       outline: 'Kontúr gravírozás',
       fill: 'Telibe gravírozott'
-    },
-    prices: {
-      standard: 8500,
-      rgb: 11150
     }
   };
 
-  function isTargetProductPage() {
-    const pathLower = String(location.pathname || '').replace(/\/$/, '').toLowerCase();
-
-    if (
-      pathLower === CFG.productPath.toLowerCase() ||
-      pathLower.includes(CFG.productPath.toLowerCase())
-    ) {
-      return true;
-    }
-
-    const bodyText = String(document.body ? document.body.textContent : '');
-
-    return (
-      CFG.productSkuRx.test(bodyText) ||
-      CFG.productNameRx.test(bodyText)
-    );
+  function currentPath() {
+    return String(window.location.pathname || '').replace(/\/+$/, '').toLowerCase();
   }
 
-  const qs = new URLSearchParams(location.search || '');
-  let installing = false;
-  let cartRetryCount = 0;
+  function isTargetPage() {
+    return currentPath() === String(CFG.productPath).toLowerCase();
+  }
 
-  function txt(el) {
-    return String((el && (el.textContent || el.value)) || '')
-      .replace(/\s+/g, ' ')
-      .trim();
+  if (!isTargetPage()) {
+    return;
+  }
+
+  function trimText(value) {
+    return String(value == null ? '' : value).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
   }
 
   function norm(value) {
-    return String(value || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .replace(/\s+/g, ' ')
-      .trim();
+    var s = String(value == null ? '' : value).toLowerCase();
+    try {
+      s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    } catch (e) {}
+    return s.replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
   }
 
-  function esc(value) {
-    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
-      return {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-      }[ch];
-    });
+  function elementText(el) {
+    if (!el) return '';
+    if (typeof el.value !== 'undefined' && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+      return trimText(el.value);
+    }
+    return trimText(el.textContent || el.innerText || '');
+  }
+
+  function getParam(name) {
+    var q = String(window.location.search || '').replace(/^\?/, '').split('&');
+    var i, parts, key, value;
+    for (i = 0; i < q.length; i++) {
+      if (!q[i]) continue;
+      parts = q[i].split('=');
+      key = decodeURIComponent(String(parts.shift() || '').replace(/\+/g, ' '));
+      if (key === name) {
+        value = parts.join('=');
+        return decodeURIComponent(String(value || '').replace(/\+/g, ' '));
+      }
+    }
+    return '';
   }
 
   function huf(value) {
-    return new Intl.NumberFormat('hu-HU').format(Math.round(Number(value) || 0)) + ' Ft';
+    var n = Math.round(Number(value) || 0);
+    try {
+      return n.toLocaleString('hu-HU') + ' Ft';
+    } catch (e) {
+      return String(n) + ' Ft';
+    }
+  }
+
+  function esc(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   function fire(el) {
+    var names = ['input', 'change', 'keyup', 'blur'];
+    var i, ev;
     if (!el) return;
 
-    ['input', 'change', 'keyup', 'blur'].forEach(function (eventName) {
+    for (i = 0; i < names.length; i++) {
       try {
-        el.dispatchEvent(new Event(eventName, { bubbles: true }));
-      } catch (_) {}
-    });
+        ev = document.createEvent('HTMLEvents');
+        ev.initEvent(names[i], true, false);
+        el.dispatchEvent(ev);
+      } catch (e) {}
+    }
 
     try {
       if (window.jQuery) {
-        window.jQuery(el)
-          .trigger('input')
-          .trigger('change')
-          .trigger('keyup')
-          .trigger('blur');
+        window.jQuery(el).trigger('input').trigger('change').trigger('keyup').trigger('blur');
       }
-    } catch (_) {}
+    } catch (e2) {}
   }
 
   function setNativeValue(el, value) {
     if (!el) return;
-
     try {
-      const proto = el.tagName === 'TEXTAREA'
-        ? HTMLTextAreaElement.prototype
-        : HTMLInputElement.prototype;
-
-      const desc = Object.getOwnPropertyDescriptor(proto, 'value');
-
-      if (desc && desc.set) {
-        desc.set.call(el, value);
-      } else {
-        el.value = value;
-      }
-    } catch (_) {
       el.value = value;
-    }
+      el.setAttribute('value', value);
+    } catch (e) {}
+    fire(el);
   }
 
-  function setButtonText(button, value) {
-    if (!button) return;
-    if (button.tagName === 'INPUT') button.value = value;
-    else button.textContent = value;
-  }
-
-  const state = {
-    id: String(qs.get('kamionterv') || '').trim(),
-    text: String(qs.get('kamionnev') || '').trim(),
-    font: String(qs.get('kamionfont') || '').trim(),
-    led: String(qs.get('kamionled') || '').trim(),
-    engraving: String(qs.get('kamiongrav') || '').trim(),
-    price: Math.max(0, Math.round(Number(qs.get('kamionar') || 0)))
+  var state = {
+    id: trimText(getParam('kamionterv')),
+    name: trimText(getParam('kamionnev')),
+    font: trimText(getParam('kamionfont')),
+    engraving: trimText(getParam('kamiongrav')),
+    led: trimText(getParam('kamionled')),
+    price: Math.round(Number(getParam('kamionar')) || 0)
   };
 
-  if (!state.price && state.id) {
-    state.price = state.led === 'rgb' ? CFG.prices.rgb : CFG.prices.standard;
+  if (state.id && !state.price) {
+    state.price = state.led === 'rgb' ? CFG.rgbPrice : CFG.standardPrice;
   }
 
-  state.hasDesign = Boolean(state.id && state.price > 0);
-
-  function currentData() {
-    return {
-      id: state.id,
-      text: state.text,
-      font: state.font,
-      led: state.led,
-      engraving: state.engraving,
-      price: state.price,
-      at: Date.now()
-    };
+  function hasDesign() {
+    return !!state.id;
   }
 
-  function saveDesign() {
-    if (!state.hasDesign) return;
-    const raw = JSON.stringify(currentData());
+  function buildDesignerUrl(editId) {
+    var url = CFG.designerUrl;
+    var sep = url.indexOf('?') === -1 ? '?' : '&';
 
-    try {
-      sessionStorage.setItem(CFG.storageKey, raw);
-    } catch (_) {}
-
-    try {
-      localStorage.setItem(CFG.storageKey, raw);
-    } catch (_) {}
-  }
-
-  if (state.hasDesign) saveDesign();
-
-  function designerLink(editId) {
-    const url = new URL(CFG.designerUrl);
-    url.searchParams.set('v', CFG.version);
-    url.searchParams.set('return', location.origin + CFG.productPath);
+    url += sep + 'v=' + encodeURIComponent(CFG.version);
+    url += '&return=' + encodeURIComponent(CFG.returnUrl);
 
     if (editId) {
-      url.searchParams.set('edit', editId);
+      url += '&edit=' + encodeURIComponent(editId);
     }
 
-    return url.toString();
+    return url;
   }
 
-  function cartButtons() {
-    return Array.from(
-      document.querySelectorAll('button,a,input[type="submit"],input[type="button"]')
-    ).filter(function (el) {
-      const t = txt(el).toLowerCase();
-      return /\bkosárba\b|\bkosarba\b/.test(t) || el.dataset.kamionCart === '1';
-    });
+  function openDesigner() {
+    window.location.href = buildDesignerUrl(hasDesign() ? state.id : '');
   }
 
-  function cartButton() {
-    return cartButtons()[0] || null;
+  function getAllClickable() {
+    return document.querySelectorAll('button,a,input[type="submit"],input[type="button"]');
   }
 
-  function productForm() {
-    const btn = cartButton();
+  function findCartButtons() {
+    var all = getAllClickable();
+    var out = [];
+    var i, t;
 
-    if (btn && btn.closest) {
-      const form = btn.closest('form');
-      if (form) return form;
+    for (i = 0; i < all.length; i++) {
+      t = norm(elementText(all[i]));
+      if (t.indexOf('kosarba') !== -1) {
+        out.push(all[i]);
+      }
     }
-
-    const forms = Array.from(document.querySelectorAll('form'));
-    const productFormMatch = forms.find(function (form) {
-      const t = txt(form);
-      return CFG.productNameRx.test(t) || CFG.productSkuRx.test(t);
-    });
-
-    return productFormMatch ||
-      document.querySelector('form[action*="cart" i],form[action*="basket" i]') ||
-      null;
+    return out;
   }
 
-  function selectScore(select, labels) {
-    const options = Array.from((select && select.options) || []).map(function (o) {
-      return norm(txt(o));
-    });
+  function mainCartButton() {
+    var buttons = findCartButtons();
+    return buttons.length ? buttons[0] : null;
+  }
 
-    return labels.reduce(function (score, label) {
-      const wanted = norm(label);
-      return score + (options.some(function (o) {
-        return o === wanted || o.includes(wanted);
-      }) ? 1 : 0);
-    }, 0);
+  function getOptionTexts(select) {
+    var out = [];
+    var i;
+    if (!select || !select.options) return out;
+
+    for (i = 0; i < select.options.length; i++) {
+      out.push(norm(select.options[i].text || select.options[i].textContent || ''));
+    }
+    return out;
   }
 
   function findLedSelect() {
-    const labels = ['Kék', 'Zöld', 'Piros', 'Fehér', 'RGB'];
+    var selects = document.getElementsByTagName('select');
+    var best = null;
+    var bestScore = 0;
+    var wanted = ['kek', 'zold', 'piros', 'feher', 'rgb'];
+    var i, j, k, options, score;
 
-    const candidates = Array.from(document.querySelectorAll('select'))
-      .map(function (select) {
-        return { select: select, score: selectScore(select, labels) };
-      })
-      .filter(function (item) {
-        return item.score >= 4;
-      })
-      .sort(function (a, b) {
-        return b.score - a.score;
-      });
+    for (i = 0; i < selects.length; i++) {
+      options = getOptionTexts(selects[i]);
+      score = 0;
 
-    return candidates.length ? candidates[0].select : null;
+      for (j = 0; j < wanted.length; j++) {
+        for (k = 0; k < options.length; k++) {
+          if (options[k] === wanted[j] || options[k].indexOf(wanted[j]) !== -1) {
+            score++;
+            break;
+          }
+        }
+      }
+
+      if (score > bestScore) {
+        best = selects[i];
+        bestScore = score;
+      }
+    }
+
+    return bestScore >= 4 ? best : null;
   }
 
   function findEngravingSelect() {
-    const labels = ['Kontúr gravírozás', 'Telibe gravírozott'];
+    var selects = document.getElementsByTagName('select');
+    var best = null;
+    var bestScore = 0;
+    var i, j, options, score;
 
-    const candidates = Array.from(document.querySelectorAll('select'))
-      .map(function (select) {
-        return { select: select, score: selectScore(select, labels) };
-      })
-      .filter(function (item) {
-        return item.score >= 2;
-      })
-      .sort(function (a, b) {
-        return b.score - a.score;
-      });
+    for (i = 0; i < selects.length; i++) {
+      options = getOptionTexts(selects[i]);
+      score = 0;
 
-    return candidates.length ? candidates[0].select : null;
-  }
-
-  function findOptionByText(select, label) {
-    if (!select || !label) return null;
-    const wanted = norm(label);
-
-    return Array.from(select.options || []).find(function (option) {
-      const t = norm(txt(option));
-      return t === wanted || t.includes(wanted) || wanted.includes(t);
-    }) || null;
-  }
-
-  function directText(el) {
-    if (!el || !el.childNodes) return '';
-
-    return Array.from(el.childNodes)
-      .filter(function (node) {
-        return node.nodeType === Node.TEXT_NODE;
-      })
-      .map(function (node) {
-        return String(node.nodeValue || '');
-      })
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  function hideExactCaption(names, datasetKey) {
-    const wanted = names.map(norm);
-
-    Array.from(document.querySelectorAll('label,div,span,p,strong,b')).forEach(function (el) {
-      const own = norm(
-        directText(el)
-          .replace(/\s*[:：]\s*$/, '')
-          .trim()
-      );
-
-      if (wanted.indexOf(own) !== -1) {
-        el.style.setProperty('display', 'none', 'important');
-        if (datasetKey) el.dataset[datasetKey] = '1';
+      for (j = 0; j < options.length; j++) {
+        if (options[j].indexOf('kontur gravirozas') !== -1) score = score | 1;
+        if (options[j].indexOf('telibe gravirozott') !== -1) score = score | 2;
       }
-    });
-  }
 
-  function hideSelectRow(select, names, datasetKey) {
-    if (!select) return;
-
-    const wrapper = select.parentElement;
-
-    if (wrapper) {
-      const selectCount = wrapper.querySelectorAll
-        ? wrapper.querySelectorAll('select').length
-        : 0;
-
-      if (selectCount === 1) {
-        wrapper.style.setProperty('display', 'none', 'important');
-        wrapper.style.setProperty('visibility', 'hidden', 'important');
-        wrapper.style.setProperty('height', '0', 'important');
-        wrapper.style.setProperty('min-height', '0', 'important');
-        wrapper.style.setProperty('max-height', '0', 'important');
-        wrapper.style.setProperty('margin', '0', 'important');
-        wrapper.style.setProperty('padding', '0', 'important');
-        wrapper.style.setProperty('border', '0', 'important');
-        wrapper.style.setProperty('overflow', 'hidden', 'important');
-        if (datasetKey) wrapper.dataset[datasetKey] = '1';
-      } else {
-        select.style.setProperty('position', 'absolute', 'important');
-        select.style.setProperty('left', '-10000px', 'important');
-        select.style.setProperty('width', '1px', 'important');
-        select.style.setProperty('height', '1px', 'important');
-        select.style.setProperty('opacity', '0', 'important');
-        select.style.setProperty('pointer-events', 'none', 'important');
+      if (score > bestScore) {
+        best = selects[i];
+        bestScore = score;
       }
-    } else {
-      select.style.setProperty('position', 'absolute', 'important');
-      select.style.setProperty('left', '-10000px', 'important');
-      select.style.setProperty('width', '1px', 'important');
-      select.style.setProperty('height', '1px', 'important');
-      select.style.setProperty('opacity', '0', 'important');
-      select.style.setProperty('pointer-events', 'none', 'important');
     }
 
-    hideExactCaption(names, datasetKey + 'Caption');
+    return bestScore === 3 ? best : null;
   }
 
-  function applyChoice(select, label, hideNames, datasetKey) {
+  function findOption(select, wantedText) {
+    var wanted = norm(wantedText);
+    var i, t;
+
+    if (!select || !select.options) return null;
+
+    for (i = 0; i < select.options.length; i++) {
+      t = norm(select.options[i].text || select.options[i].textContent || '');
+      if (t === wanted || t.indexOf(wanted) !== -1 || wanted.indexOf(t) !== -1) {
+        return select.options[i];
+      }
+    }
+
+    return null;
+  }
+
+  function setSelectValue(select, wantedText) {
+    var option, changed;
+
     if (!select) {
       return { ok: false, changed: false };
     }
 
-    hideSelectRow(select, hideNames, datasetKey);
-
-    if (!state.hasDesign) {
-      return { ok: true, changed: false };
-    }
-
-    const option = findOptionByText(select, label);
-
+    option = findOption(select, wantedText);
     if (!option) {
       return { ok: false, changed: false };
     }
 
-    const changed = select.value !== option.value;
+    changed = String(select.value) !== String(option.value);
 
     if (changed) {
       select.value = option.value;
@@ -385,690 +293,342 @@
     return { ok: true, changed: changed };
   }
 
-  function applyLed() {
-    const label = CFG.ledOptions[state.led] || state.led || '';
-    return applyChoice(
-      findLedSelect(),
-      label,
-      ['LED színe', 'LED szin'],
-      'kamionLedHidden'
-    );
+  function syncLed() {
+    if (!hasDesign()) return { ok: true, changed: false };
+    if (!CFG.led[state.led]) return { ok: false, changed: false };
+    return setSelectValue(findLedSelect(), CFG.led[state.led]);
   }
 
-  function applyEngraving() {
-    const label = CFG.engravingOptions[state.engraving] || state.engraving || '';
-    return applyChoice(
-      findEngravingSelect(),
-      label,
-      ['Gravírozás', 'Gravirozas'],
-      'kamionGravHidden'
-    );
+  function syncEngraving() {
+    if (!hasDesign()) return { ok: true, changed: false };
+    if (!CFG.engraving[state.engraving]) return { ok: false, changed: false };
+    return setSelectValue(findEngravingSelect(), CFG.engraving[state.engraving]);
   }
 
-  function hideByExactLabel(names, marker) {
-    const wanted = names.map(norm);
+  function hideOffscreen(el) {
+    if (!el) return;
 
-    Array.from(document.querySelectorAll('label,div,span,p,strong,b')).forEach(function (el) {
-      const own = norm(
-        directText(el)
-          .replace(/\s*[:：]\s*$/, '')
-          .trim()
-      );
+    el.style.position = 'absolute';
+    el.style.left = '-10000px';
+    el.style.top = 'auto';
+    el.style.width = '1px';
+    el.style.height = '1px';
+    el.style.opacity = '0';
+    el.style.pointerEvents = 'none';
+    el.style.margin = '0';
+    el.style.padding = '0';
+  }
 
-      if (wanted.indexOf(own) === -1) return;
+  function ownText(el) {
+    var nodes, out = '', i;
+    if (!el || !el.childNodes) return '';
 
-      el.style.setProperty('display', 'none', 'important');
+    nodes = el.childNodes;
+    for (i = 0; i < nodes.length; i++) {
+      if (nodes[i].nodeType === 3) {
+        out += ' ' + String(nodes[i].nodeValue || '');
+      }
+    }
 
-      let parent = el.parentElement;
+    return trimText(out);
+  }
 
-      for (let i = 0; i < 3 && parent; i++, parent = parent.parentElement) {
-        const selects = parent.querySelectorAll ? parent.querySelectorAll('select') : [];
+  function hideExactCaption(names) {
+    var wanted = [];
+    var tags = document.querySelectorAll('label,span,p,strong,b,div');
+    var i, j, t;
 
-        if (selects.length === 1) {
-          parent.style.setProperty('display', 'none', 'important');
-          parent.dataset[marker] = '1';
+    for (i = 0; i < names.length; i++) {
+      wanted.push(norm(names[i]));
+    }
+
+    for (i = 0; i < tags.length; i++) {
+      t = norm(ownText(tags[i]).replace(/[:：]/g, ''));
+      if (!t) continue;
+
+      for (j = 0; j < wanted.length; j++) {
+        if (t === wanted[j]) {
+          tags[i].style.display = 'none';
           break;
         }
       }
-    });
+    }
   }
 
   function hideNativeChoices() {
-    const led = findLedSelect();
-    const grav = findEngravingSelect();
+    hideOffscreen(findLedSelect());
+    hideOffscreen(findEngravingSelect());
 
-    if (led) {
-      hideSelectRow(led, ['LED színe', 'LED szin'], 'kamionLedHidden');
-    }
-
-    if (grav) {
-      hideSelectRow(grav, ['Gravírozás', 'Gravirozas'], 'kamionGravHidden');
-    }
-
-    // Fallback: akkor is elrejti a két natív UNAS sort,
-    // ha az UNAS a selectet később vagy egyedi wrapperben rajzolja ki.
-    hideByExactLabel(
-      ['LED színe', 'LED szin'],
-      'kamionLedHiddenFallback'
-    );
-
-    hideByExactLabel(
-      ['Gravírozás', 'Gravirozas'],
-      'kamionGravHiddenFallback'
-    );
+    hideExactCaption(['LED színe', 'LED szin']);
+    hideExactCaption(['Gravírozás', 'Gravirozas']);
   }
 
-  const DESIGN_ID_RX = /terv\s*azonos[ií]t[oó]|tervazonos[ií]t[oó]/i;
+  function findDesignInput() {
+    var id = CFG.designParameterId;
+    var selectors = [
+      'input[name*="' + id + '"]',
+      'textarea[name*="' + id + '"]',
+      'input[id*="' + id + '"]',
+      'textarea[id*="' + id + '"]',
+      'input[data-param-id="' + id + '"]',
+      'textarea[data-param-id="' + id + '"]'
+    ];
+    var i, el;
 
-  function uniquePush(list, el) {
-    if (!el || !el.matches || !el.matches('input,textarea')) return;
-    if (list.indexOf(el) === -1) list.push(el);
+    for (i = 0; i < selectors.length; i++) {
+      try {
+        el = document.querySelector(selectors[i]);
+        if (el) return el;
+      } catch (e) {}
+    }
+
+    return null;
   }
 
-  function directInputsFrom(node) {
-    const out = [];
-    if (!node) return out;
+  function writeDesignId() {
+    var input;
 
-    if (node.matches && node.matches('input,textarea')) {
-      uniquePush(out, node);
-    }
+    if (!hasDesign()) return true;
 
-    if (node.querySelectorAll) {
-      node.querySelectorAll('input[type="text"],input:not([type]),textarea,input[type="hidden"]')
-        .forEach(function (el) {
-          uniquePush(out, el);
-        });
-    }
+    input = findDesignInput();
+    if (!input) return false;
 
-    return out;
+    try {
+      input.disabled = false;
+      input.removeAttribute('disabled');
+      input.readOnly = false;
+      input.removeAttribute('readonly');
+    } catch (e) {}
+
+    setNativeValue(input, state.id);
+    hideOffscreen(input);
+    hideExactCaption(['Tervazonosító', 'Terv azonosító']);
+
+    return trimText(input.value) === state.id;
   }
 
-  function findDesignIdInputs() {
-    const id = String(CFG.nativeParamId || '').trim();
-    const found = [];
+  function renderStatusBox() {
+    var box = document.getElementById('kamionSavedDesignBoxV8');
+    var cart = mainCartButton();
+    var row, host;
+    var ledText, gravText;
 
-    if (id) {
-      const selectors = [
-        'input[name*="' + id + '"]',
-        'textarea[name*="' + id + '"]',
-        'input[id*="' + id + '"]',
-        'textarea[id*="' + id + '"]',
-        'input[data-param-id="' + id + '"]',
-        'textarea[data-param-id="' + id + '"]',
-        'input[data-parameter-id="' + id + '"]',
-        'textarea[data-parameter-id="' + id + '"]',
-        'input[data-param="' + id + '"]',
-        'textarea[data-param="' + id + '"]',
-        'input[data-id="' + id + '"]',
-        'textarea[data-id="' + id + '"]'
-      ];
-
-      selectors.forEach(function (selector) {
-        try {
-          document.querySelectorAll(selector).forEach(function (el) {
-            uniquePush(found, el);
-          });
-        } catch (_) {}
-      });
-
-      if (found.length) return found;
-    }
-
-    const labels = Array.from(document.querySelectorAll('label,div,span,p,strong,b'))
-      .filter(function (node) {
-        const t = txt(node).replace(/\s*[:：]\s*$/, '').trim();
-        return t.length <= 60 && DESIGN_ID_RX.test(t);
-      });
-
-    labels.forEach(function (label) {
-      if (label.tagName === 'LABEL') {
-        try {
-          if (label.control) uniquePush(found, label.control);
-        } catch (_) {}
-
-        const forId = label.getAttribute('for');
-        if (forId) {
-          uniquePush(found, document.getElementById(forId));
-        }
-      }
-
-      const parent = label.parentElement;
-      if (!parent) return;
-
-      const candidates = directInputsFrom(parent).filter(function (input) {
-        return input.type !== 'checkbox' &&
-          input.type !== 'radio' &&
-          input.type !== 'submit' &&
-          input.type !== 'button';
-      });
-
-      if (candidates.length === 1) {
-        uniquePush(found, candidates[0]);
-      }
-    });
-
-    return found;
-  }
-
-  function primaryDesignIdInput() {
-    const inputs = findDesignIdInputs();
-    if (!inputs.length) return null;
-
-    return (
-      inputs.find(function (input) {
-        return !!input.name && input.type !== 'hidden';
-      }) ||
-      inputs.find(function (input) {
-        return !!input.name;
-      }) ||
-      inputs[0]
-    );
-  }
-
-  function visuallyHideNativeParameter() {
-    const input = primaryDesignIdInput();
-    if (!input || input.type === 'hidden') return;
-
-    let target = input;
-    const parent = input.parentElement;
-
-    if (parent) {
-      const parentText = txt(parent);
-      const inputCount = parent.querySelectorAll
-        ? parent.querySelectorAll('input,textarea').length
-        : 0;
-
-      if (
-        inputCount === 1 &&
-        parentText.length < 300 &&
-        DESIGN_ID_RX.test(parentText)
-      ) {
-        target = parent;
-      }
-    }
-
-    target.style.setProperty('position', 'absolute', 'important');
-    target.style.setProperty('left', '-10000px', 'important');
-    target.style.setProperty('top', 'auto', 'important');
-    target.style.setProperty('width', '1px', 'important');
-    target.style.setProperty('height', '1px', 'important');
-    target.style.setProperty('overflow', 'hidden', 'important');
-    target.style.setProperty('opacity', '0', 'important');
-    target.style.setProperty('pointer-events', 'none', 'important');
-    target.style.setProperty('margin', '0', 'important');
-    target.style.setProperty('padding', '0', 'important');
-    target.style.setProperty('border', '0', 'important');
-  }
-
-  function ensureNativeMirror(sourceInput) {
-    if (!sourceInput || !sourceInput.name || !state.id) return null;
-
-    const form = productForm();
-    if (!form) return null;
-
-    if (sourceInput.closest && sourceInput.closest('form') === form) {
-      return sourceInput;
-    }
-
-    let mirror = form.querySelector('input[data-kamion-design-native-mirror="1"]');
-
-    if (!mirror) {
-      mirror = document.createElement('input');
-      mirror.type = 'hidden';
-      mirror.dataset.kamionDesignNativeMirror = '1';
-      form.appendChild(mirror);
-    }
-
-    mirror.name = sourceInput.name;
-    mirror.value = state.id;
-    mirror.setAttribute('value', state.id);
-
-    return mirror;
-  }
-
-  function writeNativeDesignId() {
-    if (!state.hasDesign || !state.id) return false;
-
-    const input = primaryDesignIdInput();
-
-    if (!input) {
-      console.warn(
-        '[Kamionos LED V6] Nem található a natív Tervazonosító mező. Paraméter ID:',
-        CFG.nativeParamId
-      );
-      return false;
-    }
-
-    input.disabled = false;
-    input.removeAttribute('disabled');
-    input.readOnly = false;
-    input.removeAttribute('readonly');
-
-    if (String(input.value || '').trim() !== state.id) {
-      setNativeValue(input, state.id);
-      input.setAttribute('value', state.id);
-      input.dataset.kamionNativeDesignId = '1';
-      fire(input);
-    } else {
-      input.dataset.kamionNativeDesignId = '1';
-    }
-
-    ensureNativeMirror(input);
-    visuallyHideNativeParameter();
-
-    return String(input.value || '').trim() === state.id;
-  }
-
-  function verifyNativeDesignId() {
-    if (!state.hasDesign || !state.id) return false;
-
-    const input = primaryDesignIdInput();
-
-    if (
-      input &&
-      !input.disabled &&
-      String(input.value || '').trim() === state.id
-    ) {
-      return true;
-    }
-
-    const form = productForm();
-    if (!form) return false;
-
-    const mirror = form.querySelector('input[data-kamion-design-native-mirror="1"]');
-
-    return !!(
-      mirror &&
-      mirror.name &&
-      String(mirror.value || '').trim() === state.id
-    );
-  }
-
-  function renderStatus(button) {
-    let box = document.getElementById('kamionPlanStatusV4');
-
-    if (!state.hasDesign) {
-      if (box) box.remove();
+    if (!hasDesign()) {
+      if (box && box.parentNode) box.parentNode.removeChild(box);
       return;
     }
+
+    if (!cart) return;
 
     if (!box) {
       box = document.createElement('div');
-      box.id = 'kamionPlanStatusV4';
+      box.id = 'kamionSavedDesignBoxV8';
 
-      const host = button.parentElement || button;
-      host.insertBefore(box, button);
+      row = cart.parentNode;
+      host = row && row.parentNode ? row.parentNode : row;
+
+      if (host && row) {
+        host.insertBefore(box, row);
+      } else if (row) {
+        row.insertBefore(box, cart);
+      }
     }
 
-    const ledLabel = CFG.ledOptions[state.led] || state.led || '—';
-    const gravLabel = CFG.engravingOptions[state.engraving] || state.engraving || '—';
+    ledText = CFG.led[state.led] || state.led || '—';
+    gravText = CFG.engraving[state.engraving] || state.engraving || '—';
 
     box.innerHTML =
-      '<div style="font-weight:800;margin-bottom:4px">✓ Terv elmentve</div>' +
-      '<div style="font-size:13px;line-height:1.45">' +
-        'Tervazonosító: <strong>' + esc(state.id) + '</strong>' +
-        (state.text ? '<br />Felirat: <strong>' + esc(state.text) + '</strong>' : '') +
-        '<br />LED színe: <strong>' + esc(ledLabel) + '</strong>' +
-        '<br />Gravírozás: <strong>' + esc(gravLabel) + '</strong>' +
-        '<br />Végleges egységár: <strong>' + esc(huf(state.price)) + '</strong>' +
+      '<div style="font-weight:800;margin-bottom:5px">✓ Terv elmentve</div>' +
+      '<div style="font-size:13px;line-height:1.48">' +
+      'Tervazonosító: <strong>' + esc(state.id) + '</strong>' +
+      (state.name ? '<br>Felirat: <strong>' + esc(state.name) + '</strong>' : '') +
+      '<br>LED színe: <strong>' + esc(ledText) + '</strong>' +
+      '<br>Gravírozás: <strong>' + esc(gravText) + '</strong>' +
+      '<br>Végleges egységár: <strong>' + esc(huf(state.price)) + '</strong>' +
       '</div>';
 
-    box.style.cssText =
-      'display:block;' +
-      'width:100%;' +
-      'flex:0 0 100%;' +
-      'flex-basis:100%;' +
-      'grid-column:1/-1;' +
-      'box-sizing:border-box;' +
-      'margin:0 0 10px;' +
-      'padding:12px 13px;' +
-      'border:1px solid #BED9C3;' +
-      'border-radius:10px;' +
-      'background:#F0F8F1;' +
-      'color:#2D6739;' +
-      'line-height:1.4;';
+    box.style.display = 'block';
+    box.style.width = '100%';
+    box.style.boxSizing = 'border-box';
+    box.style.margin = '0 0 10px 0';
+    box.style.padding = '12px 13px';
+    box.style.border = '1px solid #BED9C3';
+    box.style.borderRadius = '10px';
+    box.style.background = '#F0F8F1';
+    box.style.color = '#2D6739';
   }
 
-  function renderDesignerButton(button) {
-    if (!button || !button.parentElement) return;
+  function renderDesignerButton() {
+    var cart = mainCartButton();
+    var row, host, wrap, btn;
 
-    let wrap = document.getElementById('kamionDesignerWrapV6');
-    let designerButton = document.getElementById('kamionDesignerButtonV6');
+    if (!cart) return false;
+
+    wrap = document.getElementById('kamionDesignerWrapV8');
+    btn = document.getElementById('kamionDesignerButtonV8');
 
     if (!wrap) {
       wrap = document.createElement('div');
-      wrap.id = 'kamionDesignerWrapV6';
-      wrap.style.cssText =
-        'display:block;' +
-        'width:100%;' +
-        'flex:0 0 100%;' +
-        'flex-basis:100%;' +
-        'grid-column:1/-1;' +
-        'box-sizing:border-box;' +
-        'margin:0 0 10px;';
+      wrap.id = 'kamionDesignerWrapV8';
+      wrap.style.display = 'block';
+      wrap.style.width = '100%';
+      wrap.style.boxSizing = 'border-box';
+      wrap.style.margin = '0 0 10px 0';
 
-      var cartRow = button.parentElement;
-      var outerHost = cartRow && cartRow.parentElement;
+      row = cart.parentNode;
+      host = row && row.parentNode ? row.parentNode : row;
 
-      if (outerHost) {
-        outerHost.insertBefore(wrap, cartRow);
-      } else if (cartRow) {
-        cartRow.insertBefore(wrap, button);
+      if (host && row) {
+        host.insertBefore(wrap, row);
+      } else if (row) {
+        row.insertBefore(wrap, cart);
       }
     }
 
-    if (!designerButton) {
-      designerButton = document.createElement('button');
-      designerButton.id = 'kamionDesignerButtonV6';
-      designerButton.type = 'button';
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'kamionDesignerButtonV8';
+      btn.type = 'button';
 
-      designerButton.style.cssText =
-        'display:flex;' +
-        'align-items:center;' +
-        'justify-content:center;' +
-        'width:100%;' +
-        'min-height:46px;' +
-        'box-sizing:border-box;' +
-        'padding:11px 18px;' +
-        'border-radius:10px;' +
-        'border:1px solid #111;' +
-        'background:#fff;' +
-        'color:#111;' +
-        'font-weight:700;' +
-        'font-size:15px;' +
-        'line-height:1.2;' +
-        'text-align:center;' +
-        'cursor:pointer;' +
-        'touch-action:manipulation;';
+      btn.style.display = 'block';
+      btn.style.width = '100%';
+      btn.style.minHeight = '46px';
+      btn.style.boxSizing = 'border-box';
+      btn.style.padding = '11px 18px';
+      btn.style.border = '1px solid #111';
+      btn.style.borderRadius = '10px';
+      btn.style.background = '#fff';
+      btn.style.color = '#111';
+      btn.style.fontSize = '15px';
+      btn.style.fontWeight = '700';
+      btn.style.textAlign = 'center';
+      btn.style.cursor = 'pointer';
 
-      designerButton.addEventListener('mouseenter', function () {
-        designerButton.style.background = '#f7f7f7';
-      });
+      btn.onclick = function (event) {
+        if (event && event.preventDefault) event.preventDefault();
+        openDesigner();
+        return false;
+      };
 
-      designerButton.addEventListener('mouseleave', function () {
-        designerButton.style.background = '#fff';
-      });
-
-      designerButton.addEventListener('click', function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-
-        location.href = designerLink(
-          state.hasDesign ? state.id : ''
-        );
-      });
-
-      wrap.appendChild(designerButton);
+      wrap.appendChild(btn);
     }
 
-    designerButton.textContent =
-      state.hasDesign
-        ? 'Terv módosítása'
-        : 'Tervezés';
+    btn.innerHTML = hasDesign() ? 'Terv módosítása' : 'Tervezés';
+    return true;
   }
 
-  function prepareFinalNativeData() {
-    saveDesign();
+  function bindCart() {
+    var buttons = findCartButtons();
+    var i, button;
 
-    const ledResult = applyLed();
-    const gravResult = applyEngraving();
+    for (i = 0; i < buttons.length; i++) {
+      button = buttons[i];
 
-    if (!ledResult.ok) {
-      return { ok: false, changed: false, reason: 'led' };
+      if (!hasDesign()) {
+        if (button.getAttribute('data-kamion-v8-no-design') === '1') continue;
+        button.setAttribute('data-kamion-v8-no-design', '1');
+
+        button.addEventListener('click', function (event) {
+          if (hasDesign()) return;
+
+          if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+          }
+
+          openDesigner();
+          return false;
+        }, true);
+
+      } else {
+        if (button.getAttribute('data-kamion-v8-design') === '1') continue;
+        button.setAttribute('data-kamion-v8-design', '1');
+
+        button.addEventListener('click', function (event) {
+          var ledResult = syncLed();
+          var gravResult = syncEngraving();
+
+          if (!ledResult.ok || !gravResult.ok || !writeDesignId()) {
+            if (event) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+            }
+
+            alert('A tervezett kamionos tábla adatait nem sikerült teljesen átadni az UNAS-nak. Kérlek próbáld újra.');
+            return false;
+          }
+
+          return true;
+        }, true);
+      }
     }
-
-    if (!gravResult.ok) {
-      return { ok: false, changed: false, reason: 'engraving' };
-    }
-
-    if (ledResult.changed || gravResult.changed) {
-      return { ok: true, changed: true };
-    }
-
-    const nativeOk = writeNativeDesignId();
-    const verified = nativeOk && verifyNativeDesignId();
-
-    return {
-      ok: verified,
-      changed: false,
-      reason: verified ? '' : 'native'
-    };
   }
 
-  function scheduleCartRetry() {
-    cartRetryCount++;
+  var installing = false;
 
-    if (cartRetryCount > 5) {
-      cartRetryCount = 0;
-      alert(
-        'Az UNAS LED szín / gravírozás változatokat nem sikerült stabilan beállítani. ' +
-        'Ellenőrizd a terméknél a LED színe és Gravírozás választható tulajdonságokat.'
-      );
-      return;
-    }
-
-    setTimeout(function () {
-      installProductPage();
-
-      const fresh = cartButton();
-      if (fresh) fresh.click();
-    }, 850);
-  }
-
-  function bindCartButton(button) {
-    if (!button) return;
-
-    button.dataset.kamionCart = '1';
-    setButtonText(button, 'Kosárba');
-    button.disabled = false;
-
-    if (!state.hasDesign) {
-      if (button.dataset.kamionNoDesignBound === CFG.version) return;
-      button.dataset.kamionNoDesignBound = CFG.version;
-
-      button.addEventListener('click', function (event) {
-        if (state.hasDesign) return;
-
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-
-        location.href = designerLink('');
-      }, true);
-
-      return;
-    }
-
-    if (button.dataset.kamionCartBound === CFG.version) return;
-    button.dataset.kamionCartBound = CFG.version;
-
-    ['pointerdown', 'mousedown', 'touchstart'].forEach(function (eventName) {
-      button.addEventListener(eventName, function () {
-        saveDesign();
-        applyLed();
-        applyEngraving();
-        writeNativeDesignId();
-      }, true);
-    });
-
-    button.addEventListener('click', function (event) {
-      const result = prepareFinalNativeData();
-
-      if (result.ok && !result.changed) {
-        cartRetryCount = 0;
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-
-      if (result.changed) {
-        scheduleCartRetry();
-        return;
-      }
-
-      cartRetryCount = 0;
-
-      if (result.reason === 'led') {
-        alert(
-          'A tervezőben kiválasztott LED színt nem találom az UNAS LED színe változatai között.'
-        );
-        return;
-      }
-
-      if (result.reason === 'engraving') {
-        alert(
-          'A tervezőben kiválasztott gravírozást nem találom az UNAS Gravírozás változatai között.'
-        );
-        return;
-      }
-
-      if (result.reason === 'native') {
-        alert(
-          'Nem találom vagy nem tudom kitölteni a natív UNAS Tervazonosító mezőt. ' +
-          'A termék nem kerül kosárba, hogy ne vesszen el a tervazonosító.'
-        );
-      }
-    }, true);
-  }
-
-  function installProductPage() {
-    if (!isTargetProductPage() || installing) return false;
+  function install() {
+    if (!isTargetPage() || installing) return;
 
     installing = true;
 
     try {
-      if (state.hasDesign) {
-        saveDesign();
+      renderDesignerButton();
+
+      if (hasDesign()) {
+        syncLed();
+        syncEngraving();
+        writeDesignId();
       }
 
-      const ledResult = applyLed();
-      const gravResult = applyEngraving();
-
-      if (
-        state.hasDesign &&
-        ledResult.ok &&
-        gravResult.ok &&
-        !ledResult.changed &&
-        !gravResult.changed
-      ) {
-        writeNativeDesignId();
-      }
-
-      const buttons = cartButtons();
-      if (!buttons.length) {
-        hideNativeChoices();
-        visuallyHideNativeParameter();
-        return false;
-      }
-
-      buttons.forEach(bindCartButton);
-
-      const main = buttons[0];
-      renderDesignerButton(main);
-      renderStatus(main);
-
+      renderStatusBox();
+      bindCart();
       hideNativeChoices();
-      visuallyHideNativeParameter();
-
-      return true;
-    } finally {
-      installing = false;
+    } catch (e) {
+      try {
+        console.error('[Kamion V8]', e);
+      } catch (ignore) {}
     }
+
+    installing = false;
   }
 
-  function install() {
-    installProductPage();
-  }
+  function boot() {
+    var delays = [0, 100, 300, 700, 1200, 2000, 3500, 5500, 8000];
+    var i;
+    var timer = null;
 
-  function bootKamionIntegration() {
-    install();
-
-    [100, 300, 700, 1200, 2000, 3500, 5500, 8000].forEach(function (delay) {
-      setTimeout(function () {
-        installProductPage();
-      }, delay);
-    });
-
-    var observerTimer = null;
+    for (i = 0; i < delays.length; i++) {
+      (function (delay) {
+        window.setTimeout(install, delay);
+      })(delays[i]);
+    }
 
     try {
-      var observer = new MutationObserver(function () {
-        clearTimeout(observerTimer);
+      if (window.MutationObserver) {
+        var observer = new MutationObserver(function () {
+          if (timer) window.clearTimeout(timer);
+          timer = window.setTimeout(install, 100);
+        });
 
-        observerTimer = setTimeout(function () {
-          installProductPage();
-        }, 80);
-      });
+        observer.observe(document.documentElement, {
+          childList: true,
+          subtree: true
+        });
+      }
+    } catch (e) {}
 
-      observer.observe(document.documentElement, {
-        childList: true,
-        subtree: true
-      });
-    } catch (_) {}
-
-    setInterval(function () {
-      installProductPage();
-    }, 1500);
+    window.setInterval(install, 1800);
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener(
-      'DOMContentLoaded',
-      bootKamionIntegration,
-      { once: true }
-    );
+    document.addEventListener('DOMContentLoaded', boot);
   } else {
-    bootKamionIntegration();
+    boot();
   }
 
-  document.addEventListener('submit', function (event) {
-    if (!isTargetProductPage() || !state.hasDesign) return;
-
-    saveDesign();
-
-    const ledResult = applyLed();
-    const gravResult = applyEngraving();
-
-    writeNativeDesignId();
-
-    if (
-      !ledResult.ok ||
-      !gravResult.ok ||
-      ledResult.changed ||
-      gravResult.changed ||
-      !verifyNativeDesignId()
-    ) {
-      event.preventDefault();
-      event.stopPropagation();
-
-      alert(
-        'A rendelési adatok még nem álltak be stabilan. Kérlek kattints újra a Kosárba gombra.'
-      );
-    }
-  }, true);
-
-  document.addEventListener('formdata', function (event) {
-    if (!isTargetProductPage() || !state.hasDesign || !state.id || !event.formData) return;
-
-    const input = primaryDesignIdInput();
-
-    if (input && input.name) {
-      event.formData.set(input.name, state.id);
-    }
-  }, true);
-
-  console.log(
-    '[Kamionos LED V6] aktív:',
-    CFG.version,
-    'terv:',
-    state.id || '-',
-    'LED:',
-    state.led || '-',
-    'gravírozás:',
-    state.engraving || '-',
-    'UNAS Tervazonosító paraméter:',
-    CFG.nativeParamId
-  );
+  try {
+    console.log('[Kamionos LED V8] aktív:', CFG.version, 'terv:', state.id || '-');
+  } catch (e) {}
 })();
