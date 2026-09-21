@@ -949,60 +949,6 @@
   }
 
   function currentSelectionBox() {
-    if (selectedObject.type === 'text') {
-      /*
-        Külön vízszintes széthúzó/keskenyítő vezérlő.
-        A sarkok így újra ARÁNYOS méretezést végeznek,
-        ezt a ↔ fogót pedig csak a betűk szélességéhez használjuk.
-      */
-      const stretchX = x + w;
-      const stretchY = y + h / 2;
-
-      const stretchGroup = document.createElementNS(NS, 'g');
-      stretchGroup.setAttribute('class', 'text-stretch-control');
-      stretchGroup.setAttribute(
-        'transform',
-        'translate(' + stretchX.toFixed(2) + ' ' + stretchY.toFixed(2) + ')'
-      );
-      stretchGroup.setAttribute('role', 'button');
-      stretchGroup.setAttribute('aria-label', 'Felirat széthúzása vagy keskenyítése');
-
-      const stretchCircle = document.createElementNS(NS, 'circle');
-      stretchCircle.setAttribute('r', '7.2');
-      stretchCircle.setAttribute('class', 'text-stretch-circle');
-      stretchGroup.appendChild(stretchCircle);
-
-      const stretchText = document.createElementNS(NS, 'text');
-      stretchText.setAttribute('class', 'text-stretch-icon');
-      stretchText.setAttribute('x', '0');
-      stretchText.setAttribute('y', '0.8');
-      stretchText.setAttribute('text-anchor', 'middle');
-      stretchText.setAttribute('dominant-baseline', 'middle');
-      stretchText.textContent = '↔';
-      stretchGroup.appendChild(stretchText);
-
-      stretchGroup.addEventListener('pointerdown', evt => {
-        evt.preventDefault();
-        evt.stopPropagation();
-
-        const selection = currentSelectionBox();
-        if (!selection) return;
-
-        directEditInteraction = {
-          mode:'text-stretch',
-          pointerId:evt.pointerId,
-          anchorX:selection.x,
-          anchorCenterY:selection.y + selection.height / 2,
-          startScaleX:state.textScaleX,
-          startBoxW:Math.max(1, selection.width)
-        };
-
-        try { els.designSvg.setPointerCapture(evt.pointerId); } catch (_) {}
-      });
-
-      els.selectionLayer.appendChild(stretchGroup);
-    }
-
     if (selectedObject.type === 'pattern') {
       const inst = selectedPatternInstance();
       return inst ? { x:inst.x, y:inst.y, width:inst.w, height:inst.h } : null;
@@ -1245,23 +1191,34 @@
 
     if (directEditInteraction.mode === 'text-resize') {
       /*
-        A 4 sarokfogó ismét ARÁNYOSAN nagyít/kicsinyít.
-        A betűk széthúzására külön ↔ fogó van a jobb oldalon.
+        ARÁNYOS szövegméretezés a sarkokkal.
+        Az ellentétes sarok fix marad, a növelés maximuma pedig
+        kizárólag a FEHÉR szaggatott Biztonsági zóna.
       */
       const i = directEditInteraction;
 
+      const safeLeft = SAFE.x;
+      const safeRight = SAFE.x + SAFE.width;
+      const safeTop = SAFE.y;
+      const safeBottom = SAFE.y + SAFE.height;
+
       const availableW = i.isLeftHandle
-        ? i.anchorX - SAFE.x
-        : SAFE.x + SAFE.width - i.anchorX;
+        ? i.anchorX - safeLeft
+        : safeRight - i.anchorX;
 
       const availableH = i.isTopHandle
-        ? i.anchorY - SAFE.y
-        : SAFE.y + SAFE.height - i.anchorY;
+        ? i.anchorY - safeTop
+        : safeBottom - i.anchorY;
 
       const desiredW = Math.max(8, Math.abs(p.x - i.anchorX));
       const desiredH = Math.max(8, Math.abs(p.y - i.anchorY));
 
-      const pointerScale = Math.max(
+      /*
+        Arányt tartunk: ugyanazzal a szorzóval nő a szélesség és a magasság.
+        A felhasználó bármely irányba húzhat, az erősebb húzás határozza meg
+        a skálát, de a fehér SAFE zóna soha nem léphető túl.
+      */
+      const desiredScale = Math.max(
         desiredW / Math.max(1, i.startBoxW),
         desiredH / Math.max(1, i.startBoxH)
       );
@@ -1274,7 +1231,7 @@
         )
       );
 
-      const scale = clamp(pointerScale, .1, maxScale);
+      const scale = clamp(desiredScale, .1, maxScale);
 
       state.fontSize = clamp(
         i.startFontSize * scale,
@@ -1283,7 +1240,8 @@
       );
 
       /*
-        A sarokfogó az aktuális betűszélesség arányát megtartja.
+        A meglévő betűszélességi arányt megtartjuk,
+        tehát a sarokfogó nem torzítja a feliratot.
       */
       state.textScaleX = clamp(
         i.startScaleX,
@@ -1313,19 +1271,26 @@
 
       render();
 
+      /*
+        Font glyph-bbox korrekció: a VALÓDI kék szöveg doboza
+        kerüljön a kiszámított helyre, ne a narancssárga segédkeret.
+      */
       const actualBox = textVisualBox();
+
       if (actualBox) {
         const actualCX = actualBox.x + actualBox.width / 2;
         const actualCY = actualBox.y + actualBox.height / 2;
 
         state.xPct = clamp(
-          state.xPct + (desiredCX - actualCX) / SAFE.width * 100,
+          state.xPct +
+          (desiredCX - actualCX) / SAFE.width * 100,
           0,
           100
         );
 
         state.yPct = clamp(
-          state.yPct + (desiredCY - actualCY) / SAFE.height * 100,
+          state.yPct +
+          (desiredCY - actualCY) / SAFE.height * 100,
           0,
           100
         );
@@ -1333,52 +1298,10 @@
         render();
       }
 
-      constrainTextToSafeZone(false);
-      return;
-    }
-
-    if (directEditInteraction.mode === 'text-stretch') {
       /*
-        Csak a VALÓDI szövegszélességet módosítjuk.
-        A bal szövegszél fix, a jobb szövegszél maximum
-        a fehér Biztonsági zónáig húzható.
+        Itt már csak pozíciókorrekció történhet.
+        Nem kicsinyítjük vissza a feliratot.
       */
-      const i = directEditInteraction;
-      const right = clamp(
-        p.x,
-        i.anchorX + 8,
-        SAFE.x + SAFE.width
-      );
-
-      const desiredW = right - i.anchorX;
-
-      state.textScaleX = clamp(
-        i.startScaleX * (desiredW / Math.max(1, i.startBoxW)),
-        .25,
-        6
-      );
-
-      const desiredCX = i.anchorX + desiredW / 2;
-
-      state.xPct = clamp(
-        (desiredCX - SAFE.x) / SAFE.width * 100,
-        0,
-        100
-      );
-
-      render();
-
-      const actualBox = textVisualBox();
-      if (actualBox) {
-        state.xPct = clamp(
-          state.xPct +
-          (desiredCX - (actualBox.x + actualBox.width / 2)) / SAFE.width * 100,
-          0,
-          100
-        );
-        render();
-      }
-
       constrainTextToSafeZone(false);
       return;
     }
@@ -1414,21 +1337,27 @@
       if (!inst) return;
 
       /*
-        A minta mindig az eredeti SVG képarányával nő/kicsinyedik.
-        Az ellentétes sarok fix marad.
+        A minta mindig méretarányosan nő/kicsinyedik.
+        Az ellentétes sarok fix.
+        A maximális méretet a FEHÉR szaggatott Biztonsági zóna adja.
       */
+      const safeLeft = SAFE.x;
+      const safeRight = SAFE.x + SAFE.width;
+      const safeTop = SAFE.y;
+      const safeBottom = SAFE.y + SAFE.height;
+
       const availableW = i.isLeftHandle
-        ? i.anchorX - SAFE.x
-        : SAFE.x + SAFE.width - i.anchorX;
+        ? i.anchorX - safeLeft
+        : safeRight - i.anchorX;
 
       const availableH = i.isTopHandle
-        ? i.anchorY - SAFE.y
-        : SAFE.y + SAFE.height - i.anchorY;
+        ? i.anchorY - safeTop
+        : safeBottom - i.anchorY;
 
       const desiredW = Math.max(8, Math.abs(p.x - i.anchorX));
       const desiredH = Math.max(8, Math.abs(p.y - i.anchorY));
 
-      const pointerScale = Math.max(
+      const desiredScale = Math.max(
         desiredW / Math.max(1, i.startW),
         desiredH / Math.max(1, i.startH)
       );
@@ -1441,18 +1370,27 @@
         )
       );
 
-      const scale = clamp(pointerScale, .1, maxScale);
+      const scale = clamp(desiredScale, .1, maxScale);
 
       const newW = i.startW * scale;
       const newH = i.startH * scale;
 
       inst.w = newW;
       inst.h = newH;
-      inst.x = i.isLeftHandle ? i.anchorX - newW : i.anchorX;
-      inst.y = i.isTopHandle ? i.anchorY - newH : i.anchorY;
 
-      inst.x = clamp(inst.x, SAFE.x, SAFE.x + SAFE.width - inst.w);
-      inst.y = clamp(inst.y, SAFE.y, SAFE.y + SAFE.height - inst.h);
+      inst.x = i.isLeftHandle
+        ? i.anchorX - newW
+        : i.anchorX;
+
+      inst.y = i.isTopHandle
+        ? i.anchorY - newH
+        : i.anchorY;
+
+      /*
+        Végső védőkorlát: pontosan a fehér Biztonsági zónán belül.
+      */
+      inst.x = clamp(inst.x, safeLeft, safeRight - inst.w);
+      inst.y = clamp(inst.y, safeTop, safeBottom - inst.h);
 
       updatePatternNodeLive(inst);
       updateSelectionOverlay();
