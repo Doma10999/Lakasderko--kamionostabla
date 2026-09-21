@@ -17,7 +17,7 @@
   */
 
   const CFG = {
-    version: '20260921-kamion-v3-stabil-unas',
+    version: '20260921-kamion-v4-mobile-stabil',
     productPath: '/Tervezd-meg-sajatodat',
     productNameRx: /tervezd\s+meg\s+saj[aá]todat/i,
     productSkuRx: /FL340481/i,
@@ -634,7 +634,7 @@
   }
 
   function renderStatus(button) {
-    let box = document.getElementById('kamionPlanStatusV3');
+    let box = document.getElementById('kamionPlanStatusV4');
 
     if (!state.hasDesign) {
       if (box) box.remove();
@@ -643,7 +643,7 @@
 
     if (!box) {
       box = document.createElement('div');
-      box.id = 'kamionPlanStatusV3';
+      box.id = 'kamionPlanStatusV4';
 
       const host = button.parentElement || button;
       host.insertBefore(box, button);
@@ -663,6 +663,12 @@
       '</div>';
 
     box.style.cssText =
+      'display:block;' +
+      'width:100%;' +
+      'flex:0 0 100%;' +
+      'flex-basis:100%;' +
+      'grid-column:1/-1;' +
+      'box-sizing:border-box;' +
       'margin:0 0 10px;' +
       'padding:12px 13px;' +
       'border:1px solid #BED9C3;' +
@@ -672,26 +678,39 @@
       'line-height:1.4;';
   }
 
-  function renderModify(button) {
-    let link = document.getElementById('kamionModifyDesignV3');
+  function renderDesignerButton(button) {
+    if (!button || !button.parentElement) return;
 
-    if (!state.hasDesign) {
-      if (link) link.remove();
-      return;
+    let wrap = document.getElementById('kamionDesignerWrapV4');
+    let designerButton = document.getElementById('kamionDesignerButtonV4');
+
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.id = 'kamionDesignerWrapV4';
+      wrap.style.cssText =
+        'display:block;' +
+        'width:100%;' +
+        'flex:0 0 100%;' +
+        'flex-basis:100%;' +
+        'grid-column:1/-1;' +
+        'box-sizing:border-box;' +
+        'margin:0 0 10px;';
+
+      button.parentElement.insertBefore(wrap, button);
     }
 
-    if (!link) {
-      link = document.createElement('a');
-      link.id = 'kamionModifyDesignV3';
-      link.textContent = 'Terv módosítása';
-      link.style.cssText =
+    if (!designerButton) {
+      designerButton = document.createElement('button');
+      designerButton.id = 'kamionDesignerButtonV4';
+      designerButton.type = 'button';
+
+      designerButton.style.cssText =
         'display:flex;' +
         'align-items:center;' +
         'justify-content:center;' +
         'width:100%;' +
         'min-height:46px;' +
         'box-sizing:border-box;' +
-        'margin:0 0 10px;' +
         'padding:11px 18px;' +
         'border-radius:10px;' +
         'border:1px solid #111;' +
@@ -699,13 +718,35 @@
         'color:#111;' +
         'font-weight:700;' +
         'font-size:15px;' +
-        'text-decoration:none;';
+        'line-height:1.2;' +
+        'text-align:center;' +
+        'cursor:pointer;' +
+        'touch-action:manipulation;';
 
-      const host = button.parentElement || button;
-      host.insertBefore(link, button);
+      designerButton.addEventListener('mouseenter', function () {
+        designerButton.style.background = '#f7f7f7';
+      });
+
+      designerButton.addEventListener('mouseleave', function () {
+        designerButton.style.background = '#fff';
+      });
+
+      designerButton.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        location.href = designerLink(
+          state.hasDesign ? state.id : ''
+        );
+      });
+
+      wrap.appendChild(designerButton);
     }
 
-    link.href = designerLink(state.id);
+    designerButton.textContent =
+      state.hasDesign
+        ? 'Terv módosítása'
+        : 'Tervezés';
   }
 
   function prepareFinalNativeData() {
@@ -760,27 +801,25 @@
     if (!button) return;
 
     button.dataset.kamionCart = '1';
+    setButtonText(button, 'Kosárba');
+    button.disabled = false;
 
     if (!state.hasDesign) {
-      setButtonText(button, 'Tervezés');
-      button.disabled = false;
+      if (button.dataset.kamionNoDesignBound === CFG.version) return;
+      button.dataset.kamionNoDesignBound = CFG.version;
 
-      if (button.dataset.kamionDesignerBound !== CFG.version) {
-        button.dataset.kamionDesignerBound = CFG.version;
+      button.addEventListener('click', function (event) {
+        if (state.hasDesign) return;
 
-        button.addEventListener('click', function (event) {
-          event.preventDefault();
-          event.stopPropagation();
-          event.stopImmediatePropagation();
-          location.href = designerLink('');
-        }, true);
-      }
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+
+        location.href = designerLink('');
+      }, true);
 
       return;
     }
-
-    setButtonText(button, 'Kosárba');
-    button.disabled = false;
 
     if (button.dataset.kamionCartBound === CFG.version) return;
     button.dataset.kamionCartBound = CFG.version;
@@ -869,7 +908,7 @@
       buttons.forEach(bindCartButton);
 
       const main = buttons[0];
-      renderModify(main);
+      renderDesignerButton(main);
       renderStatus(main);
 
       hideNativeChoices();
