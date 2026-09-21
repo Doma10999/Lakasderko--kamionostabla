@@ -66,13 +66,15 @@
     footerPrice: $('#footerPrice'),
     designId: $('#designId'),
     downloadZip: $('#downloadZip'),
-    returnButton: $('#returnButton'),
     resetButton: $('#resetButton'),
     status: $('#status')
   };
 
   const params = new URLSearchParams(location.search);
-  const returnUrl = params.get('return') || '';
+  const returnUrl = params.get('return') || 'https://falmatrica-lakasdekor.hu/Tervezd-meg-sajatodat';
+  const FORMSUBMIT_ENDPOINT = 'https://formsubmit.co/tervezo@falmatrica-lakasdekor.hu';
+
+  let sendInProgress = false;
 
   const state = {
     text: params.get('nev') || 'PETI',
@@ -130,8 +132,6 @@
     els.xRange.value = state.xPct;
     els.yRange.value = state.yPct;
     els.designId.textContent = state.id;
-
-    if (returnUrl) els.returnButton.classList.remove('hidden');
 
     $$('[data-section-toggle]').forEach(btn => {
       btn.addEventListener('click', () => btn.closest('.card')?.classList.toggle('open'));
@@ -193,8 +193,7 @@
       render();
     });
     els.resetButton.addEventListener('click', reset);
-    els.downloadZip.addEventListener('click', downloadProjectZip);
-    els.returnButton.addEventListener('click', returnToShop);
+    els.downloadZip.addEventListener('click', openSendModal);
   }
 
   function textPosition() {
@@ -450,6 +449,147 @@
     });
   }
 
+
+  function setSendProgress(title, text, designId) {
+    const titleEl = $('#sendModalTitle');
+    const intro = document.querySelector('#sendFormView .send-modal-intro');
+    const idEl = $('#designIdPreview');
+    if (titleEl) titleEl.textContent = title;
+    if (intro) intro.textContent = text;
+    if (idEl && designId) idEl.textContent = designId;
+  }
+
+  function openSendModal() {
+    if (sendInProgress) return;
+    const modal = $('#sendModal');
+    if (!modal) {
+      setStatus('A mentési ablak nem található. Frissítsd az oldalt, majd próbáld újra.', 'warn');
+      return;
+    }
+    const err = $('#sendError');
+    if (err) err.textContent = '';
+    $('#sendFormView').hidden = false;
+    $('#sendSuccessView').hidden = true;
+    modal.hidden = false;
+    document.body.classList.add('modal-open');
+    setSendProgress('Terv mentése folyamatban…', 'A ZIP-fájl és az előnézeti kép elküldése folyamatban van.', state.id);
+    sendDesign(state.id);
+  }
+
+  function closeSendModal() {
+    if (sendInProgress) return;
+    const modal = $('#sendModal');
+    if (modal) modal.hidden = true;
+    document.body.classList.remove('modal-open');
+  }
+
+  function fetchWithTimeout(url, options, timeoutMs = 30000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    return fetch(url, { ...options, signal: controller.signal })
+      .finally(() => clearTimeout(timer));
+  }
+
+  async function buildProjectZip() {
+    if (!window.JSZip) throw new Error('A ZIP-kezelő nem töltődött be.');
+    const zip = new JSZip();
+    const base = state.id;
+
+    zip.file(`${base}.svg`, serializeProductionSvg());
+    zip.file(`${base}.json`, orderJson());
+    zip.file('GYARTASI-MEGJEGYZES.txt',
+`Kamionos LED tábla – ${state.id}\n\n` +
+`Méret: 490 × 120 mm\n` +
+`Biztonsági margók: bal 50 mm, jobb 50 mm, felül 14 mm, alul 5 mm\n` +
+`Felirat: ${state.text}\n` +
+`Betűtípus: ${selectedFont().label}\n` +
+`Gravírozás: ${state.engraving === 'outline' ? 'Kontúr gravírozás' : 'Telibe gravírozott'}\n` +
+`LED szín: ${selectedLed().label}\n` +
+`Ár: ${formatHuf(selectedLed().price)}\n\n` +
+`FONTOS: Az SVG szöveges elemet tartalmaz. Ha a gravírozó szoftver nem rendelkezik a kiválasztott betűtípussal, gyártás előtt alakítsd görbévé/path-tá.\n`);
+
+    let previewBlob = null;
+    try {
+      previewBlob = await svgToPngBlob();
+      if (previewBlob) zip.file(`${base}-elozet.png`, previewBlob);
+    } catch (err) {
+      console.warn('PNG export kihagyva:', err);
+    }
+
+    const zipBlob = await zip.generateAsync({
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 }
+    });
+
+    return { zipBlob, previewBlob };
+  }
+
+  async function sendDesign(designId) {
+    if (sendInProgress) return;
+    sendInProgress = true;
+    els.downloadZip.disabled = true;
+    const err = $('#sendError');
+    if (err) err.textContent = '';
+    setStatus('A gyártási terv mentése és küldése folyamatban…');
+
+    try {
+      const { zipBlob, previewBlob } = await buildProjectZip();
+      const totalSize = zipBlob.size + (previewBlob?.size || 0);
+      if (totalSize > 7_000_000) {
+        throw new Error('A terv fájlmérete túl nagy az automatikus küldéshez.');
+      }
+
+      const fd = new FormData();
+      fd.append('_subject', `Új Lakás Dekor kamionos LED tábla terv – ${designId}`);
+      fd.append('_template', 'table');
+      fd.append('_captcha', 'false');
+      fd.append('_url', location.href);
+      fd.append('tervazonosito', designId);
+      fd.append('felirat', state.text || '—');
+      fd.append('betutipus', selectedFont().label);
+      fd.append('gravirozas', state.engraving === 'outline' ? 'Kontúr gravírozás' : 'Telibe gravírozott');
+      fd.append('led_szin', selectedLed().label);
+      fd.append('meret', '49 × 12 cm');
+      fd.append('ar', formatHuf(selectedLed().price));
+      fd.append('terv_adatok', orderJson());
+      fd.append('terv_zip', new File([zipBlob], `${designId}-kamionos-led-tabla.zip`, { type: 'application/zip' }));
+      if (previewBlob) {
+        fd.append('terv_kep', new File([previewBlob], `${designId}-elozet.png`, { type: 'image/png' }));
+      }
+
+      await fetchWithTimeout(FORMSUBMIT_ENDPOINT, {
+        method: 'POST',
+        body: fd,
+        mode: 'no-cors',
+        credentials: 'omit',
+        cache: 'no-store'
+      });
+
+      $('#successDesignId').textContent = designId;
+      $('#sendModal').dataset.sentDesignId = designId;
+      $('#sendFormView').hidden = true;
+      $('#sendSuccessView').hidden = false;
+      setStatus(`Terv sikeresen elmentve: ${designId}`, 'good');
+    } catch (error) {
+      console.error(error);
+      setSendProgress(
+        'A terv mentése nem sikerült',
+        'Ellenőrizd az internetkapcsolatot, majd próbáld újra.',
+        designId
+      );
+      if (err) {
+        err.textContent = error?.name === 'AbortError'
+          ? 'A küldés túl sokáig tartott. Kérlek, próbáld újra.'
+          : (error?.message || 'A terv küldése nem sikerült.');
+      }
+      setStatus('A küldés nem sikerült. A terv nem veszett el.', 'warn');
+    } finally {
+      sendInProgress = false;
+      els.downloadZip.disabled = false;
+    }
+  }
+
   async function downloadProjectZip() {
     if (!window.JSZip) {
       setStatus('A ZIP könyvtár nem töltődött be. Ellenőrizd az internetkapcsolatot, majd próbáld újra.', 'warn');
@@ -505,6 +645,13 @@
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
+
+  document.querySelectorAll('[data-close-send]').forEach(el => el.addEventListener('click', closeSendModal));
+  document.addEventListener('keydown', e => {
+    const modal = $('#sendModal');
+    if (e.key === 'Escape' && modal && !modal.hidden && !sendInProgress) closeSendModal();
+  });
+  $('#returnToShop')?.addEventListener('click', returnToShop);
 
   function returnToShop() {
     if (!returnUrl) return;
