@@ -3,25 +3,28 @@
 
   /*
     LAKÁS DEKOR – KAMIONOS LED TÁBLA / UNAS
-    V2 – végleges kamionos tervező integráció / rejtett natív LED + gravírozás mezők
-
-    UNAS termék:
-    https://falmatrica-lakasdekor.hu/Tervezd-meg-sajatodat
-
-    Kamionos tervező:
-    https://lakasderko--kamionostabla.lakasdekor.workers.dev/
+    V3 – stabil rendelési integráció a házszámtábla-tervező bevált logikája alapján
 
     FONTOS:
-    A termékhez legyen egy SZÖVEGBEVITELI termékparaméter:
-    Név: Tervazonosító
-    Ezt a script kitölti és vizuálisan elrejti.
+    - UNAS beszúrás: body end
+    - MINDEN OLDALON legyen beszúrva
+    - Termék: /Tervezd-meg-sajatodat
+    - Cikkszám: FL340481
+    - Natív UNAS szövegparaméter: Tervazonosító
+    - Elsődlegesen a korábbi globális paraméterazonosítót keressük: 8849701
+    - LED színe és Gravírozás valódi UNAS választható tulajdonság marad.
+      A script beállítja őket, majd csak vizuálisan rejti el.
   */
 
   const CFG = {
+    version: '20260921-kamion-v3-stabil-unas',
     productPath: '/Tervezd-meg-sajatodat',
-    productSku: 'FL340481',
+    productNameRx: /tervezd\s+meg\s+saj[aá]todat/i,
+    productSkuRx: /FL340481/i,
     designerUrl: 'https://lakasderko--kamionostabla.lakasdekor.workers.dev/',
-    storageKey: 'lakasDekorKamionosLedTervV1',
+    storageKey: 'lakasDekorKamionosLedTervV3',
+    nativeParamId: '8849701',
+    nativeParamLabel: 'Tervazonosító',
     ledOptions: {
       blue: 'Kék',
       green: 'Zöld',
@@ -32,30 +35,100 @@
     engravingOptions: {
       outline: 'Kontúr gravírozás',
       fill: 'Telibe gravírozott'
+    },
+    prices: {
+      standard: 8500,
+      rgb: 11150
     }
   };
 
-  const norm = value => String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  const txt = el => String((el && (el.textContent || el.value)) || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-  const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
-  }[ch]));
-
-  const qs = new URLSearchParams(location.search || '');
+  const pathLower = String(location.pathname || '').replace(/\/$/, '').toLowerCase();
   const isProductPage =
-    String(location.pathname || '').replace(/\/$/, '').toLowerCase() === CFG.productPath.toLowerCase() ||
-    document.body.innerText.includes(CFG.productSku);
+    pathLower === CFG.productPath.toLowerCase() ||
+    pathLower.includes(CFG.productPath.toLowerCase());
 
   if (!isProductPage) return;
+
+  const qs = new URLSearchParams(location.search || '');
+  let installing = false;
+  let cartRetryCount = 0;
+
+  function txt(el) {
+    return String((el && (el.textContent || el.value)) || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function norm(value) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+      return {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      }[ch];
+    });
+  }
+
+  function huf(value) {
+    return new Intl.NumberFormat('hu-HU').format(Math.round(Number(value) || 0)) + ' Ft';
+  }
+
+  function fire(el) {
+    if (!el) return;
+
+    ['input', 'change', 'keyup', 'blur'].forEach(function (eventName) {
+      try {
+        el.dispatchEvent(new Event(eventName, { bubbles: true }));
+      } catch (_) {}
+    });
+
+    try {
+      if (window.jQuery) {
+        window.jQuery(el)
+          .trigger('input')
+          .trigger('change')
+          .trigger('keyup')
+          .trigger('blur');
+      }
+    } catch (_) {}
+  }
+
+  function setNativeValue(el, value) {
+    if (!el) return;
+
+    try {
+      const proto = el.tagName === 'TEXTAREA'
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+
+      const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+
+      if (desc && desc.set) {
+        desc.set.call(el, value);
+      } else {
+        el.value = value;
+      }
+    } catch (_) {
+      el.value = value;
+    }
+  }
+
+  function setButtonText(button, value) {
+    if (!button) return;
+    if (button.tagName === 'INPUT') button.value = value;
+    else button.textContent = value;
+  }
 
   const state = {
     id: String(qs.get('kamionterv') || '').trim(),
@@ -63,64 +136,61 @@
     font: String(qs.get('kamionfont') || '').trim(),
     led: String(qs.get('kamionled') || '').trim(),
     engraving: String(qs.get('kamiongrav') || '').trim(),
-    price: Math.max(0, Number(qs.get('kamionar') || 0))
+    price: Math.max(0, Math.round(Number(qs.get('kamionar') || 0)))
   };
 
-  function saveState() {
-    if (!state.id) return;
-    try { sessionStorage.setItem(CFG.storageKey, JSON.stringify(state)); } catch (_) {}
-    try { localStorage.setItem(CFG.storageKey, JSON.stringify(state)); } catch (_) {}
+  if (!state.price && state.id) {
+    state.price = state.led === 'rgb' ? CFG.prices.rgb : CFG.prices.standard;
   }
 
-  function restoreState() {
-    if (state.id) return;
-    let raw = '';
-    try { raw = sessionStorage.getItem(CFG.storageKey) || ''; } catch (_) {}
-    if (!raw) {
-      try { raw = localStorage.getItem(CFG.storageKey) || ''; } catch (_) {}
-    }
-    if (!raw) return;
+  state.hasDesign = Boolean(state.id && state.price > 0);
+
+  function currentData() {
+    return {
+      id: state.id,
+      text: state.text,
+      font: state.font,
+      led: state.led,
+      engraving: state.engraving,
+      price: state.price,
+      at: Date.now()
+    };
+  }
+
+  function saveDesign() {
+    if (!state.hasDesign) return;
+    const raw = JSON.stringify(currentData());
+
     try {
-      const data = JSON.parse(raw);
-      if (data && data.id) Object.assign(state, data);
+      sessionStorage.setItem(CFG.storageKey, raw);
+    } catch (_) {}
+
+    try {
+      localStorage.setItem(CFG.storageKey, raw);
     } catch (_) {}
   }
 
-  restoreState();
-  if (state.id) saveState();
-
-  function fire(el) {
-    if (!el) return;
-    ['input','change','keyup','blur'].forEach(name => {
-      try { el.dispatchEvent(new Event(name, { bubbles:true })); } catch (_) {}
-    });
-    try {
-      if (window.jQuery) window.jQuery(el).trigger('input').trigger('change').trigger('keyup').trigger('blur');
-    } catch (_) {}
-  }
-
-  function setNativeValue(el, value) {
-    if (!el) return;
-    try {
-      const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-      const desc = Object.getOwnPropertyDescriptor(proto, 'value');
-      if (desc && desc.set) desc.set.call(el, value);
-      else el.value = value;
-    } catch (_) {
-      el.value = value;
-    }
-  }
+  if (state.hasDesign) saveDesign();
 
   function designerLink(editId) {
     const url = new URL(CFG.designerUrl);
+    url.searchParams.set('v', CFG.version);
     url.searchParams.set('return', location.origin + CFG.productPath);
-    if (editId) url.searchParams.set('edit', editId);
+
+    if (editId) {
+      url.searchParams.set('edit', editId);
+    }
+
     return url.toString();
   }
 
   function cartButtons() {
-    return [...document.querySelectorAll('button,a,input[type="submit"],input[type="button"]')]
-      .filter(el => /\bkosárba\b|\bkosarba\b/i.test(txt(el)));
+    return Array.from(
+      document.querySelectorAll('button,a,input[type="submit"],input[type="button"]')
+    ).filter(function (el) {
+      const t = txt(el).toLowerCase();
+      return /\bkosárba\b|\bkosarba\b/.test(t) || el.dataset.kamionCart === '1';
+    });
   }
 
   function cartButton() {
@@ -129,190 +199,392 @@
 
   function productForm() {
     const btn = cartButton();
-    if (btn?.closest) {
-      const f = btn.closest('form');
-      if (f) return f;
+
+    if (btn && btn.closest) {
+      const form = btn.closest('form');
+      if (form) return form;
     }
-    return document.querySelector('form[action*="cart" i], form[action*="basket" i]') || null;
+
+    const forms = Array.from(document.querySelectorAll('form'));
+    const productFormMatch = forms.find(function (form) {
+      const t = txt(form);
+      return CFG.productNameRx.test(t) || CFG.productSkuRx.test(t);
+    });
+
+    return productFormMatch ||
+      document.querySelector('form[action*="cart" i],form[action*="basket" i]') ||
+      null;
   }
 
   function selectScore(select, labels) {
-    const options = [...(select?.options || [])].map(o => norm(txt(o)));
-    return labels.reduce((score, label) => score + (options.some(o => o === norm(label) || o.includes(norm(label))) ? 1 : 0), 0);
+    const options = Array.from(select?.options || []).map(function (o) {
+      return norm(txt(o));
+    });
+
+    return labels.reduce(function (score, label) {
+      const wanted = norm(label);
+      return score + (options.some(function (o) {
+        return o === wanted || o.includes(wanted);
+      }) ? 1 : 0);
+    }, 0);
   }
 
   function findLedSelect() {
-    const labels = ['Kék','Zöld','Piros','Fehér','RGB'];
-    return [...document.querySelectorAll('select')]
-      .map(select => ({ select, score:selectScore(select, labels) }))
-      .sort((a,b) => b.score - a.score)
-      .find(x => x.score >= 4)?.select || null;
+    const labels = ['Kék', 'Zöld', 'Piros', 'Fehér', 'RGB'];
+
+    const candidates = Array.from(document.querySelectorAll('select'))
+      .map(function (select) {
+        return { select: select, score: selectScore(select, labels) };
+      })
+      .filter(function (item) {
+        return item.score >= 4;
+      })
+      .sort(function (a, b) {
+        return b.score - a.score;
+      });
+
+    return candidates.length ? candidates[0].select : null;
   }
 
   function findEngravingSelect() {
-    const labels = ['Kontúr gravírozás','Telibe gravírozott'];
-    return [...document.querySelectorAll('select')]
-      .map(select => ({ select, score:selectScore(select, labels) }))
-      .sort((a,b) => b.score - a.score)
-      .find(x => x.score >= 2)?.select || null;
+    const labels = ['Kontúr gravírozás', 'Telibe gravírozott'];
+
+    const candidates = Array.from(document.querySelectorAll('select'))
+      .map(function (select) {
+        return { select: select, score: selectScore(select, labels) };
+      })
+      .filter(function (item) {
+        return item.score >= 2;
+      })
+      .sort(function (a, b) {
+        return b.score - a.score;
+      });
+
+    return candidates.length ? candidates[0].select : null;
   }
 
-  function setSelectByText(select, label) {
-    if (!select || !label) return false;
+  function findOptionByText(select, label) {
+    if (!select || !label) return null;
     const wanted = norm(label);
-    const option = [...select.options].find(o => {
-      const t = norm(txt(o));
+
+    return Array.from(select.options || []).find(function (option) {
+      const t = norm(txt(option));
       return t === wanted || t.includes(wanted) || wanted.includes(t);
-    });
-    if (!option) return false;
-    select.value = option.value;
-    option.selected = true;
-    fire(select);
-    return true;
+    }) || null;
   }
 
-  function visuallyHideChoiceRow(select, captionWords) {
+  function directText(el) {
+    if (!el || !el.childNodes) return '';
+
+    return Array.from(el.childNodes)
+      .filter(function (node) {
+        return node.nodeType === Node.TEXT_NODE;
+      })
+      .map(function (node) {
+        return String(node.nodeValue || '');
+      })
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function hideExactCaption(names, datasetKey) {
+    const wanted = names.map(norm);
+
+    Array.from(document.querySelectorAll('label,div,span,p,strong,b')).forEach(function (el) {
+      const own = norm(
+        directText(el)
+          .replace(/\s*[:：]\s*$/, '')
+          .trim()
+      );
+
+      if (wanted.indexOf(own) !== -1) {
+        el.style.setProperty('display', 'none', 'important');
+        if (datasetKey) el.dataset[datasetKey] = '1';
+      }
+    });
+  }
+
+  function hideSelectRow(select, names, datasetKey) {
     if (!select) return;
 
-    const words = (captionWords || []).map(norm);
-    const hasCaption = text => words.some(w => text === w || text.startsWith(w + ' ') || text.includes(w));
+    const wrapper = select.parentElement;
 
-    // A legkisebb olyan UNAS-sor megkeresése, amelyben a cím és pontosan ez az egy select van.
-    let target = null;
-    let p = select.parentElement;
+    if (wrapper) {
+      const selectCount = wrapper.querySelectorAll
+        ? wrapper.querySelectorAll('select').length
+        : 0;
 
-    for (let i = 0; i < 6 && p; i++, p = p.parentElement) {
-      const t = norm(txt(p));
-      const selectCount = p.querySelectorAll ? p.querySelectorAll('select').length : 0;
-      const hasCart = p.querySelector ? !!p.querySelector('button,a,input[type="submit"],input[type="button"]') : false;
-
-      if (hasCaption(t) && selectCount === 1 && !hasCart && t.length < 320) {
-        target = p;
-        break;
+      if (selectCount === 1) {
+        wrapper.style.setProperty('display', 'none', 'important');
+        wrapper.style.setProperty('visibility', 'hidden', 'important');
+        wrapper.style.setProperty('height', '0', 'important');
+        wrapper.style.setProperty('min-height', '0', 'important');
+        wrapper.style.setProperty('max-height', '0', 'important');
+        wrapper.style.setProperty('margin', '0', 'important');
+        wrapper.style.setProperty('padding', '0', 'important');
+        wrapper.style.setProperty('border', '0', 'important');
+        wrapper.style.setProperty('overflow', 'hidden', 'important');
+        if (datasetKey) wrapper.dataset[datasetKey] = '1';
+      } else {
+        select.style.setProperty('position', 'absolute', 'important');
+        select.style.setProperty('left', '-10000px', 'important');
+        select.style.setProperty('width', '1px', 'important');
+        select.style.setProperty('height', '1px', 'important');
+        select.style.setProperty('opacity', '0', 'important');
+        select.style.setProperty('pointer-events', 'none', 'important');
       }
+    } else {
+      select.style.setProperty('position', 'absolute', 'important');
+      select.style.setProperty('left', '-10000px', 'important');
+      select.style.setProperty('width', '1px', 'important');
+      select.style.setProperty('height', '1px', 'important');
+      select.style.setProperty('opacity', '0', 'important');
+      select.style.setProperty('pointer-events', 'none', 'important');
     }
 
-    // Ha az UNAS külön sorba tette a címkét, legalább magát a select kontrollt rejtsük el.
-    if (!target) {
-      target = select.closest('label') || select.parentElement || select;
-    }
-
-    target.dataset.kamionHiddenChoice = '1';
-    target.style.setProperty('display','none','important');
-    target.style.setProperty('visibility','hidden','important');
-    target.style.setProperty('height','0','important');
-    target.style.setProperty('min-height','0','important');
-    target.style.setProperty('max-height','0','important');
-    target.style.setProperty('margin','0','important');
-    target.style.setProperty('padding','0','important');
-    target.style.setProperty('border','0','important');
-    target.style.setProperty('overflow','hidden','important');
-
-    // Különálló rövid címke elrejtése (pl. „LED színe”, „Gravírozás”).
-    [...document.querySelectorAll('label,span,p,strong,b,div')].forEach(node => {
-      if (node === target || node.contains(select) || select.contains(node)) return;
-      const own = norm(txt(node).replace(/\s*[:：]\s*$/, ''));
-      if (!own || own.length > 45) return;
-
-      if (words.some(w => own === w)) {
-        const childControls = node.querySelectorAll ? node.querySelectorAll('select,input,button,a').length : 0;
-        if (childControls === 0) {
-          node.dataset.kamionHiddenCaption = '1';
-          node.style.setProperty('display','none','important');
-        }
-      }
-    });
+    hideExactCaption(names, datasetKey + 'Caption');
   }
 
-  function hideNativeDesignerChoices() {
-    visuallyHideChoiceRow(findLedSelect(), ['LED színe', 'LED szin']);
-    visuallyHideChoiceRow(findEngravingSelect(), ['Gravírozás', 'Gravirozas']);
+  function applyChoice(select, label, hideNames, datasetKey) {
+    if (!select) {
+      return { ok: false, changed: false };
+    }
+
+    hideSelectRow(select, hideNames, datasetKey);
+
+    if (!state.hasDesign) {
+      return { ok: true, changed: false };
+    }
+
+    const option = findOptionByText(select, label);
+
+    if (!option) {
+      return { ok: false, changed: false };
+    }
+
+    const changed = select.value !== option.value;
+
+    if (changed) {
+      select.value = option.value;
+      option.selected = true;
+      fire(select);
+    }
+
+    return { ok: true, changed: changed };
   }
 
-  const DESIGN_RX = /terv\s*azonos[ií]t[oó]|tervazonos[ií]t[oó]/i;
+  function applyLed() {
+    const label = CFG.ledOptions[state.led] || state.led || '';
+    return applyChoice(
+      findLedSelect(),
+      label,
+      ['LED színe', 'LED szin'],
+      'kamionLedHidden'
+    );
+  }
 
-  function fieldContext(el) {
-    let out = [el?.name, el?.id, el?.getAttribute?.('aria-label'), el?.getAttribute?.('data-name')].filter(Boolean).join(' ');
-    let p = el?.parentElement;
-    for (let i = 0; i < 4 && p; i++, p = p.parentElement) {
-      const t = txt(p);
-      if (t && t.length < 600) out += ' ' + t;
+  function applyEngraving() {
+    const label = CFG.engravingOptions[state.engraving] || state.engraving || '';
+    return applyChoice(
+      findEngravingSelect(),
+      label,
+      ['Gravírozás', 'Gravirozas'],
+      'kamionGravHidden'
+    );
+  }
+
+  function hideNativeChoices() {
+    const led = findLedSelect();
+    const grav = findEngravingSelect();
+
+    if (led) {
+      hideSelectRow(led, ['LED színe', 'LED szin'], 'kamionLedHidden');
     }
+
+    if (grav) {
+      hideSelectRow(grav, ['Gravírozás', 'Gravirozas'], 'kamionGravHidden');
+    }
+  }
+
+  const DESIGN_ID_RX = /terv\s*azonos[ií]t[oó]|tervazonos[ií]t[oó]/i;
+
+  function uniquePush(list, el) {
+    if (!el || !el.matches || !el.matches('input,textarea')) return;
+    if (list.indexOf(el) === -1) list.push(el);
+  }
+
+  function directInputsFrom(node) {
+    const out = [];
+    if (!node) return out;
+
+    if (node.matches && node.matches('input,textarea')) {
+      uniquePush(out, node);
+    }
+
+    if (node.querySelectorAll) {
+      node.querySelectorAll('input[type="text"],input:not([type]),textarea,input[type="hidden"]')
+        .forEach(function (el) {
+          uniquePush(out, el);
+        });
+    }
+
     return out;
   }
 
-  function findDesignInput() {
-    const controls = [...document.querySelectorAll('input[type="text"],input:not([type]),textarea,input[type="hidden"]')];
+  function findDesignIdInputs() {
+    const id = String(CFG.nativeParamId || '').trim();
+    const found = [];
 
-    const direct = controls.find(el => DESIGN_RX.test(fieldContext(el)));
-    if (direct) return direct;
+    if (id) {
+      const selectors = [
+        'input[name*="' + id + '"]',
+        'textarea[name*="' + id + '"]',
+        'input[id*="' + id + '"]',
+        'textarea[id*="' + id + '"]',
+        'input[data-param-id="' + id + '"]',
+        'textarea[data-param-id="' + id + '"]',
+        'input[data-parameter-id="' + id + '"]',
+        'textarea[data-parameter-id="' + id + '"]',
+        'input[data-param="' + id + '"]',
+        'textarea[data-param="' + id + '"]',
+        'input[data-id="' + id + '"]',
+        'textarea[data-id="' + id + '"]'
+      ];
 
-    const labels = [...document.querySelectorAll('label,div,span,p,strong,b')].filter(node => {
-      const t = txt(node).replace(/\s*[:：]\s*$/, '');
-      return t.length <= 70 && DESIGN_RX.test(t);
-    });
+      selectors.forEach(function (selector) {
+        try {
+          document.querySelectorAll(selector).forEach(function (el) {
+            uniquePush(found, el);
+          });
+        } catch (_) {}
+      });
 
-    for (const label of labels) {
+      if (found.length) return found;
+    }
+
+    const labels = Array.from(document.querySelectorAll('label,div,span,p,strong,b'))
+      .filter(function (node) {
+        const t = txt(node).replace(/\s*[:：]\s*$/, '').trim();
+        return t.length <= 60 && DESIGN_ID_RX.test(t);
+      });
+
+    labels.forEach(function (label) {
       if (label.tagName === 'LABEL') {
-        try { if (label.control) return label.control; } catch (_) {}
+        try {
+          if (label.control) uniquePush(found, label.control);
+        } catch (_) {}
+
         const forId = label.getAttribute('for');
         if (forId) {
-          const el = document.getElementById(forId);
-          if (el?.matches?.('input,textarea')) return el;
+          uniquePush(found, document.getElementById(forId));
         }
       }
+
       const parent = label.parentElement;
-      if (!parent) continue;
-      const candidates = [...parent.querySelectorAll('input[type="text"],input:not([type]),textarea,input[type="hidden"]')]
-        .filter(el => !['checkbox','radio','submit','button'].includes(el.type));
-      if (candidates.length === 1) return candidates[0];
-    }
-    return null;
+      if (!parent) return;
+
+      const candidates = directInputsFrom(parent).filter(function (input) {
+        return input.type !== 'checkbox' &&
+          input.type !== 'radio' &&
+          input.type !== 'submit' &&
+          input.type !== 'button';
+      });
+
+      if (candidates.length === 1) {
+        uniquePush(found, candidates[0]);
+      }
+    });
+
+    return found;
   }
 
-  function hideDesignParameter(input) {
+  function primaryDesignIdInput() {
+    const inputs = findDesignIdInputs();
+    if (!inputs.length) return null;
+
+    return (
+      inputs.find(function (input) {
+        return !!input.name && input.type !== 'hidden';
+      }) ||
+      inputs.find(function (input) {
+        return !!input.name;
+      }) ||
+      inputs[0]
+    );
+  }
+
+  function visuallyHideNativeParameter() {
+    const input = primaryDesignIdInput();
     if (!input || input.type === 'hidden') return;
+
     let target = input;
     const parent = input.parentElement;
-    if (parent && parent.querySelectorAll('input,textarea').length === 1 && DESIGN_RX.test(txt(parent))) target = parent;
 
-    target.style.setProperty('position','absolute','important');
-    target.style.setProperty('left','-10000px','important');
-    target.style.setProperty('width','1px','important');
-    target.style.setProperty('height','1px','important');
-    target.style.setProperty('overflow','hidden','important');
-    target.style.setProperty('opacity','0','important');
-    target.style.setProperty('pointer-events','none','important');
-    target.style.setProperty('margin','0','important');
-    target.style.setProperty('padding','0','important');
-    target.style.setProperty('border','0','important');
+    if (parent) {
+      const parentText = txt(parent);
+      const inputCount = parent.querySelectorAll
+        ? parent.querySelectorAll('input,textarea').length
+        : 0;
+
+      if (
+        inputCount === 1 &&
+        parentText.length < 300 &&
+        DESIGN_ID_RX.test(parentText)
+      ) {
+        target = parent;
+      }
+    }
+
+    target.style.setProperty('position', 'absolute', 'important');
+    target.style.setProperty('left', '-10000px', 'important');
+    target.style.setProperty('top', 'auto', 'important');
+    target.style.setProperty('width', '1px', 'important');
+    target.style.setProperty('height', '1px', 'important');
+    target.style.setProperty('overflow', 'hidden', 'important');
+    target.style.setProperty('opacity', '0', 'important');
+    target.style.setProperty('pointer-events', 'none', 'important');
+    target.style.setProperty('margin', '0', 'important');
+    target.style.setProperty('padding', '0', 'important');
+    target.style.setProperty('border', '0', 'important');
   }
 
-  function ensureNativeMirror(input) {
-    if (!input?.name || !state.id) return null;
+  function ensureNativeMirror(sourceInput) {
+    if (!sourceInput || !sourceInput.name || !state.id) return null;
+
     const form = productForm();
     if (!form) return null;
 
-    if (input.closest?.('form') === form) return input;
+    if (sourceInput.closest && sourceInput.closest('form') === form) {
+      return sourceInput;
+    }
 
-    let mirror = form.querySelector('input[data-kamion-design-mirror="1"]');
+    let mirror = form.querySelector('input[data-kamion-design-native-mirror="1"]');
+
     if (!mirror) {
       mirror = document.createElement('input');
       mirror.type = 'hidden';
-      mirror.dataset.kamionDesignMirror = '1';
+      mirror.dataset.kamionDesignNativeMirror = '1';
       form.appendChild(mirror);
     }
-    mirror.name = input.name;
+
+    mirror.name = sourceInput.name;
     mirror.value = state.id;
     mirror.setAttribute('value', state.id);
+
     return mirror;
   }
 
-  function writeDesignId() {
-    if (!state.id) return false;
-    const input = findDesignInput();
+  function writeNativeDesignId() {
+    if (!state.hasDesign || !state.id) return false;
+
+    const input = primaryDesignIdInput();
+
     if (!input) {
-      console.warn('[Kamionos LED tervező] Nem található a natív „Tervazonosító” szövegparaméter.');
+      console.warn(
+        '[Kamionos LED V3] Nem található a natív Tervazonosító mező. Paraméter ID:',
+        CFG.nativeParamId
+      );
       return false;
     }
 
@@ -321,132 +593,352 @@
     input.readOnly = false;
     input.removeAttribute('readonly');
 
-    setNativeValue(input, state.id);
-    input.setAttribute('value', state.id);
-    input.dataset.kamionDesignId = '1';
-    fire(input);
+    if (String(input.value || '').trim() !== state.id) {
+      setNativeValue(input, state.id);
+      input.setAttribute('value', state.id);
+      input.dataset.kamionNativeDesignId = '1';
+      fire(input);
+    } else {
+      input.dataset.kamionNativeDesignId = '1';
+    }
+
     ensureNativeMirror(input);
-    hideDesignParameter(input);
+    visuallyHideNativeParameter();
 
     return String(input.value || '').trim() === state.id;
   }
 
-  function ensureDesignerButton() {
-    if (document.getElementById('kamion-designer-button')) return;
-    const cart = cartButton();
-    if (!cart?.parentElement) return;
+  function verifyNativeDesignId() {
+    if (!state.hasDesign || !state.id) return false;
 
-    const btn = document.createElement('button');
-    btn.id = 'kamion-designer-button';
-    btn.type = 'button';
-    btn.textContent = state.id ? 'Terv módosítása' : 'Tervezés';
-    btn.style.cssText = [
-      'width:100%',
-      'margin:0 0 10px',
-      'padding:14px 18px',
-      'border:1px solid #111',
-      'border-radius:10px',
-      'background:#fff',
-      'color:#111',
-      'font-weight:800',
-      'cursor:pointer'
-    ].join(';');
+    const input = primaryDesignIdInput();
 
-    btn.addEventListener('click', () => {
-      location.href = designerLink(state.id || '');
-    });
+    if (
+      input &&
+      !input.disabled &&
+      String(input.value || '').trim() === state.id
+    ) {
+      return true;
+    }
 
-    cart.parentElement.insertBefore(btn, cart);
+    const form = productForm();
+    if (!form) return false;
+
+    const mirror = form.querySelector('input[data-kamion-design-native-mirror="1"]');
+
+    return !!(
+      mirror &&
+      mirror.name &&
+      String(mirror.value || '').trim() === state.id
+    );
   }
 
-  function summaryBox() {
-    const old = document.getElementById('kamion-plan-summary');
-    if (!state.id) {
-      old?.remove();
+  function renderStatus(button) {
+    let box = document.getElementById('kamionPlanStatusV3');
+
+    if (!state.hasDesign) {
+      if (box) box.remove();
       return;
     }
 
-    let box = old;
     if (!box) {
       box = document.createElement('div');
-      box.id = 'kamion-plan-summary';
-      box.style.cssText = [
-        'margin:10px 0',
-        'padding:12px 14px',
-        'border:1px solid #b8d7bf',
-        'border-radius:10px',
-        'background:#eef8f0',
-        'color:#286b36',
-        'font-size:13px',
-        'line-height:1.5'
-      ].join(';');
-      const cart = cartButton();
-      cart?.parentElement?.insertBefore(box, cart);
+      box.id = 'kamionPlanStatusV3';
+
+      const host = button.parentElement || button;
+      host.insertBefore(box, host.firstChild);
     }
 
     const ledLabel = CFG.ledOptions[state.led] || state.led || '—';
     const gravLabel = CFG.engravingOptions[state.engraving] || state.engraving || '—';
 
     box.innerHTML =
-      '<strong>✓ Terv elmentve</strong><br>' +
-      'Tervazonosító: <b>' + esc(state.id) + '</b><br>' +
-      'Felirat: <b>' + esc(state.text || '—') + '</b><br>' +
-      'LED színe: <b>' + esc(ledLabel) + '</b><br>' +
-      'Gravírozás: <b>' + esc(gravLabel) + '</b><br>' +
-      'Végleges egységár: <b>' + new Intl.NumberFormat('hu-HU').format(state.price || 8500) + ' Ft</b>';
+      '<div style="font-weight:800;margin-bottom:4px">✓ Terv elmentve</div>' +
+      '<div style="font-size:13px;line-height:1.45">' +
+        'Tervazonosító: <strong>' + esc(state.id) + '</strong>' +
+        (state.text ? '<br />Felirat: <strong>' + esc(state.text) + '</strong>' : '') +
+        '<br />LED színe: <strong>' + esc(ledLabel) + '</strong>' +
+        '<br />Gravírozás: <strong>' + esc(gravLabel) + '</strong>' +
+        '<br />Végleges egységár: <strong>' + esc(huf(state.price)) + '</strong>' +
+      '</div>';
+
+    box.style.cssText =
+      'margin:0 0 10px;' +
+      'padding:12px 13px;' +
+      'border:1px solid #BED9C3;' +
+      'border-radius:10px;' +
+      'background:#F0F8F1;' +
+      'color:#2D6739;' +
+      'line-height:1.4;';
   }
 
-  function applyReturnedDesign() {
-    if (!state.id) return;
+  function renderModify(button) {
+    let link = document.getElementById('kamionModifyDesignV3');
 
-    const ledLabel = CFG.ledOptions[state.led] || state.led;
-    const gravLabel = CFG.engravingOptions[state.engraving] || state.engraving;
+    if (!state.hasDesign) {
+      if (link) link.remove();
+      return;
+    }
 
-    const ledSelect = findLedSelect();
-    const engravingSelect = findEngravingSelect();
+    if (!link) {
+      link = document.createElement('a');
+      link.id = 'kamionModifyDesignV3';
+      link.textContent = 'Terv módosítása';
+      link.style.cssText =
+        'display:flex;' +
+        'align-items:center;' +
+        'justify-content:center;' +
+        'width:100%;' +
+        'min-height:46px;' +
+        'box-sizing:border-box;' +
+        'margin:0 0 10px;' +
+        'padding:11px 18px;' +
+        'border-radius:10px;' +
+        'border:1px solid #111;' +
+        'background:#fff;' +
+        'color:#111;' +
+        'font-weight:700;' +
+        'font-size:15px;' +
+        'text-decoration:none;';
 
-    setSelectByText(ledSelect, ledLabel);
-    setSelectByText(engravingSelect, gravLabel);
-    hideNativeDesignerChoices();
-    writeDesignId();
-    summaryBox();
+      const host = button.parentElement || button;
+      host.insertBefore(link, button);
+    }
 
-    const btn = document.getElementById('kamion-designer-button');
-    if (btn) btn.textContent = 'Terv módosítása';
+    link.href = designerLink(state.id);
+  }
+
+  function prepareFinalNativeData() {
+    saveDesign();
+
+    const ledResult = applyLed();
+    const gravResult = applyEngraving();
+
+    if (!ledResult.ok) {
+      return { ok: false, changed: false, reason: 'led' };
+    }
+
+    if (!gravResult.ok) {
+      return { ok: false, changed: false, reason: 'engraving' };
+    }
+
+    if (ledResult.changed || gravResult.changed) {
+      return { ok: true, changed: true };
+    }
+
+    const nativeOk = writeNativeDesignId();
+    const verified = nativeOk && verifyNativeDesignId();
+
+    return {
+      ok: verified,
+      changed: false,
+      reason: verified ? '' : 'native'
+    };
+  }
+
+  function scheduleCartRetry() {
+    cartRetryCount++;
+
+    if (cartRetryCount > 5) {
+      cartRetryCount = 0;
+      alert(
+        'Az UNAS LED szín / gravírozás változatokat nem sikerült stabilan beállítani. ' +
+        'Ellenőrizd a terméknél a LED színe és Gravírozás választható tulajdonságokat.'
+      );
+      return;
+    }
+
+    setTimeout(function () {
+      installProductPage();
+
+      const fresh = cartButton();
+      if (fresh) fresh.click();
+    }, 850);
+  }
+
+  function bindCartButton(button) {
+    if (!button) return;
+
+    button.dataset.kamionCart = '1';
+
+    if (!state.hasDesign) {
+      setButtonText(button, 'Tervezés');
+      button.disabled = false;
+
+      if (button.dataset.kamionDesignerBound !== CFG.version) {
+        button.dataset.kamionDesignerBound = CFG.version;
+
+        button.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          location.href = designerLink('');
+        }, true);
+      }
+
+      return;
+    }
+
+    setButtonText(button, 'Kosárba');
+    button.disabled = false;
+
+    if (button.dataset.kamionCartBound === CFG.version) return;
+    button.dataset.kamionCartBound = CFG.version;
+
+    ['pointerdown', 'mousedown', 'touchstart'].forEach(function (eventName) {
+      button.addEventListener(eventName, function () {
+        saveDesign();
+        applyLed();
+        applyEngraving();
+        writeNativeDesignId();
+      }, true);
+    });
+
+    button.addEventListener('click', function (event) {
+      const result = prepareFinalNativeData();
+
+      if (result.ok && !result.changed) {
+        cartRetryCount = 0;
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      if (result.changed) {
+        scheduleCartRetry();
+        return;
+      }
+
+      cartRetryCount = 0;
+
+      if (result.reason === 'led') {
+        alert(
+          'A tervezőben kiválasztott LED színt nem találom az UNAS LED színe változatai között.'
+        );
+        return;
+      }
+
+      if (result.reason === 'engraving') {
+        alert(
+          'A tervezőben kiválasztott gravírozást nem találom az UNAS Gravírozás változatai között.'
+        );
+        return;
+      }
+
+      if (result.reason === 'native') {
+        alert(
+          'Nem találom vagy nem tudom kitölteni a natív UNAS Tervazonosító mezőt. ' +
+          'A termék nem kerül kosárba, hogy ne vesszen el a tervazonosító.'
+        );
+      }
+    }, true);
+  }
+
+  function installProductPage() {
+    if (!isProductPage || installing) return false;
+
+    installing = true;
+
+    try {
+      if (state.hasDesign) {
+        saveDesign();
+      }
+
+      const ledResult = applyLed();
+      const gravResult = applyEngraving();
+
+      if (
+        state.hasDesign &&
+        ledResult.ok &&
+        gravResult.ok &&
+        !ledResult.changed &&
+        !gravResult.changed
+      ) {
+        writeNativeDesignId();
+      }
+
+      const buttons = cartButtons();
+      if (!buttons.length) {
+        hideNativeChoices();
+        visuallyHideNativeParameter();
+        return false;
+      }
+
+      buttons.forEach(bindCartButton);
+
+      const main = buttons[0];
+      renderStatus(main);
+      renderModify(main);
+
+      hideNativeChoices();
+      visuallyHideNativeParameter();
+
+      return true;
+    } finally {
+      installing = false;
+    }
   }
 
   function install() {
-    ensureDesignerButton();
-    hideNativeDesignerChoices();
-    if (state.id) applyReturnedDesign();
-    else summaryBox();
+    installProductPage();
   }
 
   install();
 
-  // Az UNAS a termékblokkot késleltetve is újrarenderelheti,
-  // ezért néhány könnyű utóellenőrzés biztosítja, hogy a két natív mező ne villanjon vissza.
-  [250, 700, 1500, 3000].forEach(delay => {
-    setTimeout(() => {
-      hideNativeDesignerChoices();
-      ensureDesignerButton();
-      if (state.id) {
-        applyReturnedDesign();
-      }
+  [250, 700, 1500, 3000, 5000].forEach(function (delay) {
+    setTimeout(function () {
+      installProductPage();
     }, delay);
   });
 
-  let runs = 0;
-  const observer = new MutationObserver(() => {
-    if (++runs > 80) return;
-    ensureDesignerButton();
-    hideNativeDesignerChoices();
-    if (state.id) {
-      writeDesignId();
-      summaryBox();
-    }
-  });
+  document.addEventListener('submit', function (event) {
+    if (!isProductPage || !state.hasDesign) return;
 
-  observer.observe(document.body, { childList:true, subtree:true });
-  setTimeout(() => observer.disconnect(), 15000);
+    saveDesign();
+
+    const ledResult = applyLed();
+    const gravResult = applyEngraving();
+
+    writeNativeDesignId();
+
+    if (
+      !ledResult.ok ||
+      !gravResult.ok ||
+      ledResult.changed ||
+      gravResult.changed ||
+      !verifyNativeDesignId()
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+
+      alert(
+        'A rendelési adatok még nem álltak be stabilan. Kérlek kattints újra a Kosárba gombra.'
+      );
+    }
+  }, true);
+
+  document.addEventListener('formdata', function (event) {
+    if (!isProductPage || !state.hasDesign || !state.id || !event.formData) return;
+
+    const input = primaryDesignIdInput();
+
+    if (input && input.name) {
+      event.formData.set(input.name, state.id);
+    }
+  }, true);
+
+  console.log(
+    '[Kamionos LED V3] aktív:',
+    CFG.version,
+    'terv:',
+    state.id || '-',
+    'LED:',
+    state.led || '-',
+    'gravírozás:',
+    state.engraving || '-',
+    'UNAS Tervazonosító paraméter:',
+    CFG.nativeParamId
+  );
 })();
