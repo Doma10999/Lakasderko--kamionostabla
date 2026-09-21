@@ -13,6 +13,12 @@
   const FORMSUBMIT_ENDPOINT = 'https://formsubmit.co/tervezo@falmatrica-lakasdekor.hu';
   const params = new URLSearchParams(location.search);
   const returnUrl = params.get('return') || 'https://falmatrica-lakasdekor.hu/Tervezd-meg-sajatodat';
+  const EDIT_DESIGN_ID = String(params.get('edit') || '').trim();
+  const DESIGN_STORAGE_PREFIX = 'lakasdekor_truck_led_design_v2_';
+  const DESIGN_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
+
+  let snapshotTimer = null;
+  let missingEditDesign = false;
 
   const LED_COLORS = [
     { id: 'blue', label: 'Kék', value: '#2f55ff', css: '#2f55ff', price: PRICES.standard },
@@ -76,7 +82,7 @@
     xPct: clamp(Number(params.get('x') || 50), 0, 100),
     yPct: clamp(Number(params.get('y') || 50), 0, 100),
     showSafe: true,
-    id: makeDesignId()
+    id: EDIT_DESIGN_ID || makeDesignId()
   };
 
   function clamp(n, min, max) {
@@ -111,6 +117,103 @@
     const bytes = new Uint8Array(6);
     crypto.getRandomValues(bytes);
     return 'KL-' + yy + mm + dd + '-' + [...bytes].map(b => chars[b % chars.length]).join('');
+  }
+
+  function designStorageKey(id) {
+    return DESIGN_STORAGE_PREFIX + String(id || '');
+  }
+
+  function designSnapshot() {
+    return {
+      version: 2,
+      designId: state.id,
+      savedAt: Date.now(),
+      text: state.text,
+      fontId: state.fontId,
+      engraving: state.engraving,
+      led: state.led,
+      fontSize: state.fontSize,
+      xPct: state.xPct,
+      yPct: state.yPct,
+      showSafe: !!state.showSafe
+    };
+  }
+
+  function saveDesignSnapshotNow() {
+    if (!state.id) return false;
+    const raw = JSON.stringify(designSnapshot());
+
+    try {
+      sessionStorage.setItem(designStorageKey(state.id), raw);
+    } catch (_) {}
+
+    try {
+      localStorage.setItem(designStorageKey(state.id), raw);
+    } catch (_) {}
+
+    return true;
+  }
+
+  function queueSnapshotSave() {
+    clearTimeout(snapshotTimer);
+    snapshotTimer = setTimeout(saveDesignSnapshotNow, 180);
+  }
+
+  function readStoredSnapshot(designId) {
+    if (!designId) return null;
+
+    let raw = '';
+    try {
+      raw = sessionStorage.getItem(designStorageKey(designId)) || '';
+    } catch (_) {}
+
+    if (!raw) {
+      try {
+        raw = localStorage.getItem(designStorageKey(designId)) || '';
+      } catch (_) {}
+    }
+
+    if (!raw) return null;
+
+    try {
+      const data = JSON.parse(raw);
+      if (!data || data.designId !== designId) return null;
+      if (data.savedAt && Date.now() - Number(data.savedAt) > DESIGN_STORAGE_TTL_MS) return null;
+      return data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function restoreDesignSnapshot(designId) {
+    const snap = readStoredSnapshot(designId);
+    if (!snap) return false;
+
+    state.id = designId;
+    state.text = cleanText(snap.text) || 'PETI';
+    state.fontId = FONTS.some(f => f.id === snap.fontId) ? snap.fontId : 'arial-bold';
+    state.engraving = snap.engraving === 'fill' ? 'fill' : 'outline';
+    state.led = LED_COLORS.some(c => c.id === snap.led) ? snap.led : 'blue';
+    state.fontSize = clamp(snap.fontSize, 34, 92);
+    state.xPct = clamp(snap.xPct, 0, 100);
+    state.yPct = clamp(snap.yPct, 0, 100);
+    state.showSafe = snap.showSafe !== false;
+    return true;
+  }
+
+  function initializeEditSession() {
+    if (!EDIT_DESIGN_ID) {
+      saveDesignSnapshotNow();
+      return;
+    }
+
+    if (restoreDesignSnapshot(EDIT_DESIGN_ID)) {
+      return;
+    }
+
+    missingEditDesign = true;
+    state.id = makeDesignId();
+    saveDesignSnapshotNow();
   }
 
   function formatHuf(value) {
@@ -277,6 +380,8 @@
     } else {
       setStatus('A terv a megadott gyártási biztonsági zónán belül tartható.');
     }
+
+    queueSnapshotSave();
   }
 
   function bbox() {
@@ -525,6 +630,7 @@
 
   async function sendDesign(designId) {
     if (sendInProgress) return;
+    saveDesignSnapshotNow();
     sendInProgress = true;
     els.downloadZip.disabled = true;
     els.loading?.classList.remove('hidden');
@@ -561,6 +667,7 @@
         cache:'no-store'
       });
 
+      saveDesignSnapshotNow();
       $('#successDesignId').textContent = designId;
       $('#sendModal').dataset.sentDesignId = designId;
       $('#sendFormView').hidden = true;
@@ -592,6 +699,7 @@
   }
 
   function returnToShop() {
+    saveDesignSnapshotNow();
     const id = $('#sendModal').dataset.sentDesignId || state.id;
     const url = new URL(returnUrl, location.href);
     url.searchParams.set('kamionterv', id);
@@ -609,7 +717,13 @@
   });
   $('#returnToShop').addEventListener('click', returnToShop);
 
+  initializeEditSession();
   setupControls();
   render();
+
+  if (missingEditDesign) {
+    setStatus('A korábbi terv ebben a böngészőben már nem érhető el, ezért biztonsági okból új tervazonosítóval indult egy új terv.', 'warn');
+  }
+
   setTimeout(() => autoFit(false), 80);
 })();
