@@ -3,7 +3,7 @@
 
   /*
     LAKÁS DEKOR – KAMIONOS LED TÁBLA / UNAS
-    V3 – stabil rendelési integráció a házszámtábla-tervező bevált logikája alapján
+    V4 – mobilbarát, stabil rendelési integráció a házszámtábla-tervező bevált logikája alapján
 
     FONTOS:
     - UNAS beszúrás: body end
@@ -582,7 +582,7 @@
 
     if (!input) {
       console.warn(
-        '[Kamionos LED V3] Nem található a natív Tervazonosító mező. Paraméter ID:',
+        '[Kamionos LED V4] Nem található a natív Tervazonosító mező. Paraméter ID:',
         CFG.nativeParamId
       );
       return false;
@@ -969,7 +969,7 @@
   }, true);
 
   console.log(
-    '[Kamionos LED V3] aktív:',
+    '[Kamionos LED V4] aktív:',
     CFG.version,
     'terv:',
     state.id || '-',
