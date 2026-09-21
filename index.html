@@ -2,227 +2,181 @@
 <html lang="hu">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#111111" />
-  <meta name="description" content="Kamionos LED tábla tervező – 49×12 cm" />
-  <title>Kamionos LED tábla tervező</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#f3e6d8" />
+  <meta name="description" content="Lakás Dekor – Kamionos LED tábla tervező, 49 × 12 cm" />
+  <title>Lakás Dekor – Kamionos LED tábla tervező</title>
   <link rel="stylesheet" href="./styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div>
-        <div class="eyebrow">LAKÁS DEKOR · EGYEDI TERVEZŐ</div>
-        <h1>Kamionos LED tábla <em>tervező</em></h1>
-        <p class="lead">49 × 12 cm-es LED tábla élő előnézettel, gyártási biztonsági zónával és ZIP exporttal.</p>
-      </div>
-      <div class="price-card" aria-live="polite">
-        <span>Végleges ár</span>
-        <strong id="headerPrice">8 500 Ft</strong>
-      </div>
-    </header>
+<div id="app">
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">EGYEDI KAMIONOS LED TÁBLA TERVEZŐ</div>
+      <h1>Tervezd meg a saját <em>LED tábládat.</em></h1>
+    </div>
+    <p class="intro">49 × 12 cm-es kamionos LED tábla élő előnézettel. A terv mentése után a gyártási SVG 1.1 és az előnézet automatikusan elküldésre kerül a Lakás Dekor részére.</p>
+  </header>
 
-    <main class="workspace">
-      <aside class="panel" aria-label="Tervezési beállítások">
-        <section class="card open">
-          <button class="section-title" type="button" data-section-toggle>
-            <span>01</span> FELIRAT <b>⌄</b>
-          </button>
-          <div class="section-body">
-            <label>
-              LED táblára kerülő név / szöveg
-              <input id="textInput" type="text" maxlength="24" value="PETI" autocomplete="off" />
-            </label>
-
-            <label>
-              Betűtípus
-              <select id="fontSelect"></select>
-            </label>
-
-            <div class="font-note">
-              Az első két betűtípus közvetlenül böngészőből használható. A két „BT” névnél helyettesítő betű jelenik meg addig, amíg a saját licencelt font nincs betöltve.
-            </div>
-          </div>
-        </section>
-
-        <section class="card open">
-          <button class="section-title" type="button" data-section-toggle>
-            <span>02</span> GRAVÍROZÁS <b>⌄</b>
-          </button>
-          <div class="section-body">
-            <div class="segmented" id="engravingControl">
-              <button type="button" data-engraving="outline" class="active">Kontúr gravírozás</button>
-              <button type="button" data-engraving="fill">Telibe gravírozott</button>
-            </div>
-            <p class="hint">Kontúr módban csak a betűk körvonala, telibe módban a teljes betűfelület világít az előnézetben.</p>
-          </div>
-        </section>
-
-        <section class="card open">
-          <button class="section-title" type="button" data-section-toggle>
-            <span>03</span> LED SZÍN <b>⌄</b>
-          </button>
-          <div class="section-body">
-            <div id="colorGrid" class="color-grid" role="radiogroup" aria-label="LED szín"></div>
-            <div class="selection-summary">
-              <span>Kiválasztott szín</span>
-              <strong id="selectedColorLabel">Kék</strong>
-            </div>
-            <div class="selection-summary">
-              <span>Ár</span>
-              <strong id="selectedPrice">8 500 Ft</strong>
-            </div>
-            <p class="hint">Kék, zöld, piros és fehér: 8 500 Ft. RGB: 11 150 Ft.</p>
-          </div>
-        </section>
-
-        <section class="card open">
-          <button class="section-title" type="button" data-section-toggle>
-            <span>04</span> ELRENDEZÉS <b>⌄</b>
-          </button>
-          <div class="section-body">
-            <label>
-              Betűméret
-              <div class="range-row">
-                <input id="sizeRange" type="range" min="34" max="92" value="68" step="1" />
-                <output id="sizeOutput">68 mm</output>
-              </div>
-            </label>
-            <label>
-              Vízszintes pozíció
-              <div class="range-row">
-                <input id="xRange" type="range" min="0" max="100" value="50" step="1" />
-                <output id="xOutput">50%</output>
-              </div>
-            </label>
-            <label>
-              Függőleges pozíció
-              <div class="range-row">
-                <input id="yRange" type="range" min="0" max="100" value="50" step="1" />
-                <output id="yOutput">50%</output>
-              </div>
-            </label>
-            <div class="button-row">
-              <button id="fitButton" class="secondary" type="button">Automatikus illesztés</button>
-              <button id="centerButton" class="secondary" type="button">Középre</button>
-            </div>
-          </div>
-        </section>
-
-        <section class="card open">
-          <button class="section-title" type="button" data-section-toggle>
-            <span>05</span> GYÁRTÁSI TERÜLET <b>⌄</b>
-          </button>
-          <div class="section-body">
-            <div class="spec-grid">
-              <div><span>Tábla</span><strong>490 × 120 mm</strong></div>
-              <div><span>Bal / jobb margó</span><strong>50 / 50 mm</strong></div>
-              <div><span>Felső margó</span><strong>14 mm</strong></div>
-              <div><span>Alsó margó</span><strong>5 mm</strong></div>
-              <div><span>Hasznos szélesség</span><strong>390 mm</strong></div>
-              <div><span>Hasznos magasság</span><strong>101 mm</strong></div>
-            </div>
-            <label class="toggle-row">
-              <span><strong>Biztonsági zóna mutatása</strong><small>A szaggatott vonal nem kerül az exportált gyártási SVG-be.</small></span>
-              <input id="safeZoneToggle" type="checkbox" checked />
-            </label>
-          </div>
-        </section>
-
-        <section class="card open">
-          <button class="section-title" type="button" data-section-toggle>
-            <span>06</span> MENTÉS <b>⌄</b>
-          </button>
-          <div class="section-body">
-            <div class="design-id-box">
-              <span>Tervazonosító</span>
-              <strong id="designId">—</strong>
-            </div>
-            <button id="downloadZip" class="primary full" type="button">Terv mentése és küldése →</button>
-            <p class="hint">A terv ZIP-fájlja és az előnézeti kép automatikusan elküldésre kerül, majd tovább tudsz lépni a rendeléshez.</p>
-            <div id="status" class="status" aria-live="polite">A terv szerkeszthető. A biztonsági zónából kilógó szöveget a program automatikusan visszafogja.</div>
-          </div>
-        </section>
-      </aside>
-
-      <section class="preview-card" aria-label="Élő tábla előnézet">
-        <div class="preview-head">
-          <div>
-            <span class="eyebrow dark">ÉLŐ ELŐNÉZET</span>
-            <strong>Kamionos LED tábla · 49 × 12 cm</strong>
-          </div>
-          <button id="resetButton" class="secondary small" type="button">Alaphelyzet</button>
-        </div>
-
-        <div class="preview-stage">
-          <svg id="designSvg" viewBox="0 0 490 120" role="img" aria-label="Kamionos LED tábla előnézet">
-            <defs>
-              <filter id="glow" x="-50%" y="-80%" width="200%" height="260%">
-                <feGaussianBlur stdDeviation="3.4" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-              <linearGradient id="rgbGradient" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stop-color="#ff2b2b" />
-                <stop offset="22%" stop-color="#ffd52b" />
-                <stop offset="44%" stop-color="#32ff7e" />
-                <stop offset="66%" stop-color="#30d5ff" />
-                <stop offset="84%" stop-color="#5865ff" />
-                <stop offset="100%" stop-color="#ff4de1" />
-              </linearGradient>
-            </defs>
-
-            <rect class="board-bg" x="0" y="0" width="490" height="120" rx="2" />
-            <rect class="board-edge" x="2" y="2" width="486" height="116" rx="2" />
-            <rect id="safeZone" class="safe-zone" x="50" y="14" width="390" height="101" rx="1" />
-            <text id="previewText" x="245" y="75" text-anchor="middle">PETI</text>
-          </svg>
-        </div>
-
-        <div class="preview-footer">
-          <div><small>FELIRAT</small><strong id="footerText">PETI</strong></div>
-          <div><small>GRAVÍROZÁS</small><strong id="footerEngraving">Kontúr</strong></div>
-          <div><small>LED</small><strong id="footerColor">Kék</strong></div>
-          <div><small>ÁR</small><strong id="footerPrice">8 500 Ft</strong></div>
+  <main class="workspace">
+    <aside class="panel" aria-label="Tervezési beállítások">
+      <section class="card open">
+        <button class="section-title" type="button" data-section-toggle><span>01</span> FELIRAT <b>⌄</b></button>
+        <div class="section-body">
+          <label>LED táblára kerülő név / szöveg
+            <input id="textInput" type="text" maxlength="24" value="PETI" autocomplete="off" />
+          </label>
+          <label>Betűtípus
+            <select id="fontSelect"></select>
+          </label>
+          <div class="hint" id="fontHint">Az Arial betűtípusok gyártási SVG-ben görbévé alakíthatók. A két BT betűtípushoz a pontos fontfájl külön hozzáadható.</div>
         </div>
       </section>
-    </main>
-  </div>
 
-
-  <div id="sendModal" class="send-modal" hidden>
-    <div class="send-modal-backdrop" data-close-send></div>
-    <div class="send-modal-card" role="dialog" aria-modal="true" aria-labelledby="sendModalTitle">
-      <button type="button" class="send-modal-close" data-close-send aria-label="Bezárás">×</button>
-
-      <div id="sendFormView">
-        <div class="send-modal-eyebrow">TERV MENTÉSE</div>
-        <h2 id="sendModalTitle">Terv mentése folyamatban…</h2>
-        <p class="send-modal-intro">A ZIP-fájl és az előnézeti kép elküldése folyamatban van.</p>
-        <div class="design-id-box">
-          <span>Tervazonosító</span>
-          <strong id="designIdPreview">—</strong>
+      <section class="card open">
+        <button class="section-title" type="button" data-section-toggle><span>02</span> GRAVÍROZÁS <b>⌄</b></button>
+        <div class="section-body">
+          <div class="segmented" id="engravingControl">
+            <button type="button" data-engraving="outline" class="active">Kontúr gravírozás</button>
+            <button type="button" data-engraving="fill">Telibe gravírozott</button>
+          </div>
+          <div class="hint compact">Kontúr módban csak a felirat körvonala, telibe módban a teljes felület kerül gravírozásra.</div>
         </div>
-        <div id="sendError" class="send-error" aria-live="polite"></div>
+      </section>
+
+      <section class="card open">
+        <button class="section-title" type="button" data-section-toggle><span>03</span> LED SZÍN <b>⌄</b></button>
+        <div class="section-body">
+          <div id="colorGrid" class="color-grid" role="radiogroup" aria-label="LED szín"></div>
+          <div class="summary-grid">
+            <div><span>LED színe</span><strong id="selectedColorLabel">Kék</strong></div>
+            <div><span>Ár</span><strong id="selectedPrice">8 500 Ft</strong></div>
+          </div>
+          <div class="hint">Kék, zöld, piros és fehér: 8 500 Ft. RGB: 11 150 Ft.</div>
+        </div>
+      </section>
+
+      <section class="card open selected-card">
+        <button class="section-title" type="button" data-section-toggle><span>04</span> ELRENDEZÉS <b>⌄</b></button>
+        <div class="section-body">
+          <label>Betűméret <span id="sizeOutput">68 mm</span>
+            <input id="sizeRange" type="range" min="34" max="92" value="68" step="1" />
+          </label>
+          <label>Vízszintes pozíció <span id="xOutput">50%</span>
+            <input id="xRange" type="range" min="0" max="100" value="50" step="1" />
+          </label>
+          <label>Függőleges pozíció <span id="yOutput">50%</span>
+            <input id="yRange" type="range" min="0" max="100" value="50" step="1" />
+          </label>
+          <div class="buttons-inline two-buttons">
+            <button id="fitButton" class="ghost small" type="button">Automatikus illesztés</button>
+            <button id="centerButton" class="ghost small" type="button">Középre</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card open">
+        <button class="section-title" type="button" data-section-toggle><span>05</span> GYÁRTÁSI TERÜLET <b>⌄</b></button>
+        <div class="section-body">
+          <div class="summary-grid production-grid">
+            <div><span>Tábla</span><strong>490 × 120 mm</strong></div>
+            <div><span>Bal / jobb</span><strong>50 / 50 mm</strong></div>
+            <div><span>Felső margó</span><strong>14 mm</strong></div>
+            <div><span>Alsó margó</span><strong>5 mm</strong></div>
+          </div>
+          <label class="toggle-row">
+            <div><strong>Biztonsági zóna mutatása</strong><small>A segédvonal nem kerül a gyártási SVG-be.</small></div>
+            <input id="safeZoneToggle" type="checkbox" checked />
+          </label>
+        </div>
+      </section>
+
+      <section class="card open">
+        <button class="section-title" type="button" data-section-toggle><span>06</span> TERV MENTÉSE <b>⌄</b></button>
+        <div class="section-body">
+          <div class="design-id-box">
+            <span>Tervazonosító</span>
+            <strong id="designId">—</strong>
+          </div>
+          <div class="hint compact">A mentéskor a tervazonosító, LED szín, gravírozás és gyártási fájlok együtt kerülnek elküldésre.</div>
+        </div>
+      </section>
+    </aside>
+
+    <section class="preview-wrap" aria-label="Élő tábla előnézet">
+      <div class="preview-head">
+        <span>ÉLŐ TERVELŐNÉZET</span>
+        <div class="preview-actions">
+          <button id="resetButton" class="ghost small" type="button">Alaphelyzet</button>
+          <button id="centerPreviewButton" class="ghost small" type="button">Középre</button>
+        </div>
       </div>
 
-      <div id="sendSuccessView" class="send-success" hidden>
-        <div class="send-success-icon">✓</div>
-        <h2>Terved sikeresen elmentve.</h2>
-        <p>A tervazonosító és a választott beállítások automatikusan bekerülnek a webshopos rendeléshez.</p>
-        <div class="design-id-box success-id">
-          <span>Tervazonosító</span>
-          <strong id="successDesignId">—</strong>
-        </div>
-        <button type="button" id="returnToShop" class="primary full-button">Tovább a rendeléshez →</button>
+      <div id="viewer">
+        <svg id="designSvg" viewBox="0 0 490 120" role="img" aria-label="Kamionos LED tábla előnézet">
+          <defs>
+            <filter id="glow" x="-50%" y="-80%" width="200%" height="260%">
+              <feGaussianBlur stdDeviation="3.4" result="blur" />
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <linearGradient id="rgbGradient" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#ff2b2b"/><stop offset="22%" stop-color="#ffd52b"/>
+              <stop offset="44%" stop-color="#32ff7e"/><stop offset="66%" stop-color="#30d5ff"/>
+              <stop offset="84%" stop-color="#5865ff"/><stop offset="100%" stop-color="#ff4de1"/>
+            </linearGradient>
+          </defs>
+          <rect class="board-bg" x="0" y="0" width="490" height="120" rx="2"/>
+          <rect class="board-edge" x="2" y="2" width="486" height="116" rx="2"/>
+          <rect id="safeZone" class="safe-zone" x="50" y="14" width="390" height="101" rx="1"/>
+          <text id="previewText" x="245" y="75" text-anchor="middle">PETI</text>
+        </svg>
+        <div class="viewer-note">A felirat automatikusan a megadott gyártási területen belül marad.</div>
+        <div id="loading" class="loading hidden"><div class="spinner"></div><span>Terv készítése…</span></div>
       </div>
+
+      <div class="bottom-bar">
+        <div><small>FELIRAT</small><strong id="footerText">PETI</strong></div>
+        <div><small>GRAVÍROZÁS</small><strong id="footerEngraving">Kontúr</strong></div>
+        <div><small>LED SZÍN</small><strong id="footerColor">Kék</strong></div>
+        <div><small>VÉGLEGES ÁR</small><strong id="footerPrice">8 500 Ft</strong></div>
+        <button id="downloadZip" class="primary">Terv mentése és küldése →</button>
+      </div>
+      <div id="status" class="status" aria-live="polite">A terv szerkeszthető. A felirat a gyártási területen belül marad.</div>
+    </section>
+  </main>
+</div>
+
+<div id="sendModal" class="send-modal" hidden>
+  <div class="send-modal-backdrop" data-close-send></div>
+  <div class="send-modal-card" role="dialog" aria-modal="true" aria-labelledby="sendModalTitle">
+    <button type="button" class="send-modal-close" data-close-send aria-label="Bezárás">×</button>
+
+    <div id="sendFormView">
+      <div class="send-modal-eyebrow">TERV MENTÉSE</div>
+      <h2 id="sendModalTitle">Terv mentése folyamatban…</h2>
+      <p class="send-modal-intro">A gyártási SVG 1.1, a ZIP-fájl és az előnézeti kép elküldése folyamatban van.</p>
+      <div class="design-id-box">
+        <span>Tervazonosító</span>
+        <strong id="designIdPreview">—</strong>
+      </div>
+      <div id="sendError" class="send-error" aria-live="polite"></div>
+    </div>
+
+    <div id="sendSuccessView" class="send-success" hidden>
+      <div class="send-success-icon">✓</div>
+      <h2>Terved sikeresen elmentve.</h2>
+      <p>A tervazonosító és a választott LED/gravírozási beállítások automatikusan visszakerülnek a webshopba.</p>
+      <div class="design-id-box success-id">
+        <span>Tervazonosító</span>
+        <strong id="successDesignId">—</strong>
+      </div>
+      <button type="button" id="returnToShop" class="primary full-button">Tovább a rendeléshez →</button>
     </div>
   </div>
+</div>
 
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <script src="./app.js"></script>
+<script src="./app.js"></script>
 </body>
 </html>
