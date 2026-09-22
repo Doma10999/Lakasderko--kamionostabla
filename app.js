@@ -168,7 +168,7 @@
     engraving: params.get('grav') === 'fill' ? 'fill' : 'outline',
     patterns: [],
     led: LED_COLORS.some(c => c.id === params.get('led')) ? params.get('led') : 'blue',
-    fontSize: clamp(Number(params.get('meret') || 68), 18, 280),
+    fontSize: clamp(Number(params.get('meret') || 68), 18, 420),
     textScaleX: clamp(Number(params.get('szelesseg') || 100), 25, 800) / 100,
     xPct: clamp(Number(params.get('x') || 50), 0, 100),
     yPct: clamp(Number(params.get('y') || 50), 0, 100),
@@ -298,7 +298,7 @@
     state.fontId = FONTS.some(f => f.id === snap.fontId) ? snap.fontId : 'bahnschrift';
     state.engraving = snap.engraving === 'fill' ? 'fill' : 'outline';
     state.led = LED_COLORS.some(c => c.id === snap.led) ? snap.led : 'blue';
-    state.fontSize = clamp(snap.fontSize, 18, 280);
+    state.fontSize = clamp(snap.fontSize, 18, 420);
     state.textScaleX = clamp(Number(snap.textScaleX || 1), .25, 8);
     state.xPct = clamp(snap.xPct, 0, 100);
     state.yPct = clamp(snap.yPct, 0, 100);
@@ -1324,10 +1324,8 @@
       let nextScaleX = i.startScaleX;
 
       /*
-        Ha a MAGASSÁG fogy el előbb, de szélességben még van hely,
-        a sarok további vízszintes húzása széthúzza a feliratot.
-        Ez az a rész, amitől a PETI még nagyobbra húzható a képen
-        látható állapotnál.
+        1) Ha a MAGASSÁG fogy el előbb, de szélességben még van hely,
+           a további húzás szélességben tudja növelni a feliratot.
       */
       if (
         maxHeightScale < maxWidthScale &&
@@ -1355,10 +1353,47 @@
         );
       }
 
+      /*
+        2) FONTOS JAVÍTÁS:
+           ha a SZÉLESSÉG fogy el előbb (ez történik a PETI-nél),
+           attól még a felirat MAGASSÁGBAN tovább nőhet egészen
+           a fehér szaggatott Biztonsági zónáig.
+
+           Ilyenkor a szélességet a zónán belül tartjuk, és a
+           textScaleX-et automatikusan csökkentjük annyira, hogy
+           a betűk magasabbak lehessenek anélkül, hogy oldalra kilógnának.
+      */
+      if (
+        maxWidthScale <= maxHeightScale &&
+        pointerScale >= maxWidthScale
+      ) {
+        const heightPointerScale =
+          desiredH / Math.max(1, i.startBoxH);
+
+        heightScale = clamp(
+          Math.max(maxWidthScale, heightPointerScale),
+          maxWidthScale,
+          maxHeightScale
+        );
+
+        targetH = i.startBoxH * heightScale;
+        targetW = availableW;
+
+        const proportionalWidthAtCurrentHeight =
+          i.startBoxW * heightScale;
+
+        nextScaleX = clamp(
+          i.startScaleX *
+            (targetW / Math.max(1, proportionalWidthAtCurrentHeight)),
+          .25,
+          8
+        );
+      }
+
       state.fontSize = clamp(
         i.startFontSize * heightScale,
         18,
-        280
+        420
       );
 
       state.textScaleX = nextScaleX;
@@ -1715,7 +1750,7 @@
 
       if (box.width > maxW || box.height > maxH) {
         const factor = Math.min(maxW / box.width, maxH / box.height);
-        state.fontSize = clamp(state.fontSize * factor, 18, 280);
+        state.fontSize = clamp(state.fontSize * factor, 18, 420);
       }
 
       render();
