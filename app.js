@@ -936,10 +936,115 @@
   }
 
   function textVisualBox() {
+    /*
+      A kijelölő kerethez NEM az SVG <text>.getBBox() font-metrikáját
+      használjuk, mert az több betűtípusnál (pl. Bahnschrift) üres
+      ascender/descender területet is beleszámol.
+
+      Canvas TextMetrics actualBoundingBox* értékekkel a ténylegesen
+      kirajzolt betűk vizuális dobozát mérjük. Így a narancssárga
+      kijelölés közvetlenül a kék betűk körül lesz, ugyanúgy, mint
+      a minták kijelölése.
+    */
+    const text = cleanText(state.text);
+    if (!text) return null;
+
+    try {
+      const canvas =
+        textVisualBox._canvas ||
+        (textVisualBox._canvas = document.createElement('canvas'));
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Nincs canvas context');
+
+      const font = selectedFont();
+      const pos = previewBaseline();
+
+      ctx.font =
+        String(font.weight || 400) +
+        ' ' +
+        String(state.fontSize) +
+        'px ' +
+        font.family;
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+
+      const m = ctx.measureText(text);
+
+      const left =
+        Number.isFinite(m.actualBoundingBoxLeft)
+          ? m.actualBoundingBoxLeft
+          : m.width / 2;
+
+      const right =
+        Number.isFinite(m.actualBoundingBoxRight)
+          ? m.actualBoundingBoxRight
+          : m.width / 2;
+
+      const ascent =
+        Number.isFinite(m.actualBoundingBoxAscent)
+          ? m.actualBoundingBoxAscent
+          : state.fontSize * 0.78;
+
+      const descent =
+        Number.isFinite(m.actualBoundingBoxDescent)
+          ? m.actualBoundingBoxDescent
+          : state.fontSize * 0.06;
+
+      /*
+        Kontúr gravírozásnál a látható stroke külső fele is számítson
+        a kijelölésbe, de a glow/filter ne, mert az csak látványeffekt.
+      */
+      const strokeWidth =
+        state.engraving === 'outline'
+          ? Math.max(1.0, state.fontSize * 0.028)
+          : 0.55;
+
+      const padY = strokeWidth / 2;
+      const padX = padY * state.textScaleX;
+
+      const x =
+        pos.x -
+        left * state.textScaleX -
+        padX;
+
+      const y =
+        pos.y -
+        ascent -
+        padY;
+
+      const width =
+        (left + right) * state.textScaleX +
+        padX * 2;
+
+      const height =
+        ascent +
+        descent +
+        padY * 2;
+
+      if (
+        Number.isFinite(x) &&
+        Number.isFinite(y) &&
+        Number.isFinite(width) &&
+        Number.isFinite(height) &&
+        width > 0 &&
+        height > 0
+      ) {
+        return { x, y, width, height };
+      }
+    } catch (_) {
+      // Fallback lent.
+    }
+
+    /*
+      Fallback régebbi böngészőre.
+    */
     const box = rawTextBox();
     if (!box) return null;
 
     const center = targetCenter();
+
     return {
       x: center.x + (box.x - center.x) * state.textScaleX,
       y: box.y,
@@ -2219,6 +2324,13 @@
   setupControls();
   setupDirectEditing();
   render();
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => {
+      render();
+      updateSelectionOverlay();
+    }).catch(() => {});
+  }
 
   if (missingEditDesign) {
     setStatus('A korábbi terv ebben a böngészőben már nem érhető el, ezért biztonsági okból új tervazonosítóval indult egy új terv.', 'warn');
