@@ -1280,6 +1280,51 @@
         });
 
         els.selectionLayer.appendChild(mirrorGroup);
+
+        /*
+          Gyors törlés a kijelölt minta jobb felső sarkánál.
+          Külön X gomb, hogy a vásárlónak ne kelljen megkeresnie
+          a bal oldali "Törlés" gombot.
+        */
+        const deleteX = Math.min(482, x + w + 10);
+        const deleteY = Math.max(8, y - 10);
+
+        const deleteGroup = document.createElementNS(NS, 'g');
+        deleteGroup.setAttribute('class', 'pattern-delete-control');
+        deleteGroup.setAttribute(
+          'transform',
+          'translate(' + deleteX.toFixed(2) + ' ' + deleteY.toFixed(2) + ')'
+        );
+        deleteGroup.setAttribute('role', 'button');
+        deleteGroup.setAttribute('aria-label', 'Kijelölt minta törlése');
+
+        const deleteCircle = document.createElementNS(NS, 'circle');
+        deleteCircle.setAttribute('r', '7.4');
+        deleteCircle.setAttribute('class', 'pattern-delete-circle');
+        deleteGroup.appendChild(deleteCircle);
+
+        const deleteText = document.createElementNS(NS, 'text');
+        deleteText.setAttribute('class', 'pattern-delete-icon');
+        deleteText.setAttribute('x', '0');
+        deleteText.setAttribute('y', '0.7');
+        deleteText.setAttribute('text-anchor', 'middle');
+        deleteText.setAttribute('dominant-baseline', 'middle');
+        deleteText.textContent = '×';
+        deleteGroup.appendChild(deleteText);
+
+        deleteGroup.addEventListener('pointerdown', evt => {
+          evt.preventDefault();
+          evt.stopPropagation();
+
+          /*
+            Pontosan azt a mintát töröljük, amelyikhez ez az X tartozik.
+            Így akkor is biztos a működés, ha több minta van a terven.
+          */
+          selectedObject = { type:'pattern', id:inst.id };
+          deleteSelectedPattern();
+        });
+
+        els.selectionLayer.appendChild(deleteGroup);
       }
     }
   }

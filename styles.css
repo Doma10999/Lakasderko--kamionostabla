@@ -144,6 +144,11 @@ input[type=range]{width:100%;accent-color:#27221f}
 .pattern-mirror-circle{fill:#fff;stroke:#e07b27;stroke-width:1.2;vector-effect:non-scaling-stroke}
 .pattern-mirror-icon{fill:#d86d17;font-size:10px;font-weight:900;font-family:Arial,sans-serif;pointer-events:none;user-select:none}
 .pattern-mirror-control:hover .pattern-mirror-circle{fill:#fff7ef}
+.pattern-delete-control{pointer-events:all;cursor:pointer;touch-action:none}
+.pattern-delete-circle{fill:#fff;stroke:#d94b3f;stroke-width:1.35;vector-effect:non-scaling-stroke}
+.pattern-delete-icon{fill:#d94b3f;font-size:13px;font-weight:900;font-family:Arial,sans-serif;pointer-events:none;user-select:none}
+.pattern-delete-control:hover .pattern-delete-circle{fill:#fff1ef;stroke:#b92f25}
+.pattern-delete-control:hover .pattern-delete-icon{fill:#b92f25}
 .object-stretch-control{pointer-events:all;cursor:ew-resize;touch-action:none}
 .object-stretch-circle{fill:#fff;stroke:#e07b27;stroke-width:1.2;vector-effect:non-scaling-stroke}
 .object-stretch-icon{fill:#d86d17;font-size:10px;font-weight:900;font-family:Arial,sans-serif;pointer-events:none;user-select:none}
