@@ -12,7 +12,7 @@
   const PRICES = { standard: 8500, rgb: 11150 };
   const FORMSUBMIT_ENDPOINT = 'https://formsubmit.co/tervezo@falmatrica-lakasdekor.hu';
   const params = new URLSearchParams(location.search);
-  const returnUrl = params.get('return') || 'https://falmatrica-lakasdekor.hu/Tervezd-meg-sajatodat';
+  const returnUrl = params.get('return') || 'https://falmatrica-lakasdekor.hu/Kamionos-tabla-tervezo';
   const EDIT_DESIGN_ID = String(params.get('edit') || '').trim();
   const DESIGN_STORAGE_PREFIX = 'lakasdekor_truck_led_design_v2_';
   const DESIGN_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
