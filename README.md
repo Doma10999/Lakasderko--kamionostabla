@@ -26,7 +26,7 @@
 
 Termékoldal:
 
-`https://falmatrica-lakasdekor.hu/Tervezd-meg-sajatodat`
+`https://falmatrica-lakasdekor.hu/Kamionos-tabla-tervezo`
 
 Cikkszám:
 
