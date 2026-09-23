@@ -18,7 +18,7 @@
    */
 
   var CFG = {
-    version: '20260921-kamion-v8-designid-fix',
+    version: '20260923-kamion-v9-new-product-url',
     productPath: '/Kamionos-tabla-tervezo',
     designerUrl: 'https://lakasderko--kamionostabla.lakasdekor.workers.dev/',
     returnUrl: 'https://falmatrica-lakasdekor.hu/Kamionos-tabla-tervezo',
