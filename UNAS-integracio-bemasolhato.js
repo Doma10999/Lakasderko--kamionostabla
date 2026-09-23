@@ -6,7 +6,7 @@
    * V8 ES5 – külön kamionos integráció
    *
    * Csak ezen az oldalon fut:
-   * /Tervezd-meg-sajatodat
+   * /Kamionos-tabla-tervezo
    *
    * Cikkszám: FL340481
    * Tervező: https://lakasderko--kamionostabla.lakasdekor.workers.dev/
@@ -19,9 +19,9 @@
 
   var CFG = {
     version: '20260921-kamion-v8-designid-fix',
-    productPath: '/Tervezd-meg-sajatodat',
+    productPath: '/Kamionos-tabla-tervezo',
     designerUrl: 'https://lakasderko--kamionostabla.lakasdekor.workers.dev/',
-    returnUrl: 'https://falmatrica-lakasdekor.hu/Tervezd-meg-sajatodat',
+    returnUrl: 'https://falmatrica-lakasdekor.hu/Kamionos-tabla-tervezo',
     designParameterId: '8849701',
     standardPrice: 8500,
     rgbPrice: 11150,
