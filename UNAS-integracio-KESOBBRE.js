@@ -6,7 +6,7 @@
     V1 – végleges kamionos tervező integráció
 
     UNAS termék:
-    https://falmatrica-lakasdekor.hu/Tervezd-meg-sajatodat
+    https://falmatrica-lakasdekor.hu/Kamionos-tabla-tervezo
 
     Kamionos tervező:
     https://lakasderko--kamionostabla.lakasdekor.workers.dev/
@@ -18,7 +18,7 @@
   */
 
   const CFG = {
-    productPath: '/Tervezd-meg-sajatodat',
+    productPath: '/Kamionos-tabla-tervezo',
     productSku: 'FL340481',
     designerUrl: 'https://lakasderko--kamionostabla.lakasdekor.workers.dev/',
     storageKey: 'lakasDekorKamionosLedTervV1',
